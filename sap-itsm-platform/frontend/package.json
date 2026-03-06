@@ -1,0 +1,38 @@
+{
+  "name": "sap-itsm-frontend",
+  "version": "2.4.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "serve -s dist -l ${PORT:-3000}",
+    "lint": "eslint src --ext ts,tsx --report-unused-disable-directives",
+    "prebuild": "echo \"Build 20260227_123827\""
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.24.1",
+    "@tanstack/react-query-devtools": "^5.24.1",
+    "axios": "^1.6.7",
+    "date-fns": "^3.3.1",
+    "lucide-react": "^0.344.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hot-toast": "^2.4.1",
+    "react-router-dom": "^6.22.2",
+    "recharts": "^2.12.2",
+    "serve": "^14.2.1",
+    "zustand": "^4.5.2"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.64",
+    "@types/react-dom": "^18.2.21",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.18",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.4.2",
+    "vite": "^5.1.5"
+  },
+  "buildTime": "2026-02-27"
+}

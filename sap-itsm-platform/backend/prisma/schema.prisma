@@ -1,0 +1,889 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── ENUMS ────────────────────────────────────────────────────
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  TRIAL
+  INACTIVE
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  COMPANY_ADMIN
+  USER
+  AGENT
+  PROJECT_MANAGER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+  LOCKED
+}
+
+enum AgentLevel {
+  L1
+  L2
+  L3
+  SPECIALIST
+}
+
+enum AgentStatus {
+  AVAILABLE
+  BUSY
+  OFFLINE
+  ON_LEAVE
+}
+
+enum AgentType {
+  AGENT
+  PROJECT_MANAGER
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+  PROSPECT
+}
+
+enum WeekendCoverageType {
+  NONE
+  ON_CALL
+  FULL
+}
+
+enum HolidayCoverageType {
+  NONE
+  ON_CALL
+  FULL
+}
+
+enum AfterHoursCoverageType {
+  NONE
+  ON_CALL
+  FULL
+}
+
+enum PriorityScope {
+  ALL
+  P1_ONLY
+  P1_P2
+}
+
+enum HolidaySupportType {
+  NONE
+  EMERGENCY_ONLY
+  FULL
+}
+
+enum CIType {
+  SYSTEM
+  CLIENT
+  SERVER
+  INTERFACE
+  BTP_INSTANCE
+  DATABASE
+  NETWORK
+  APPLICATION
+}
+
+enum CIStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+  DECOMMISSIONED
+}
+
+enum RecordType {
+  INCIDENT
+  REQUEST
+  PROBLEM
+  CHANGE
+}
+
+enum Priority {
+  P1
+  P2
+  P3
+  P4
+}
+
+enum RecordStatus {
+  NEW
+  OPEN
+  IN_PROGRESS
+  PENDING
+  RESOLVED
+  CLOSED
+  CANCELLED
+}
+
+enum TimeEntryStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum EmailStatus {
+  QUEUED
+  PENDING
+  SENT
+  FAILED
+  BOUNCED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  EXPORT
+  APPROVE
+  REJECT
+  ESCALATE
+  ASSIGN
+  COMMENT
+  STATUS_CHANGE
+  BREACH
+  SLA_WARNING
+}
+
+// ── TENANTS ──────────────────────────────────────────────────
+
+model Tenant {
+  id        String       @id @default(uuid())
+  name      String
+  slug      String       @unique
+  timezone  String       @default("UTC")
+  country   String?
+  status    TenantStatus @default(ACTIVE)
+  settings  Json?        @default("{}")
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  users            User[]
+  customers        Customer[]
+  configItems      ConfigurationItem[]
+  records          ITSMRecord[]
+  shifts           Shift[]
+  supportTypeMasters SupportTypeMaster[]
+  slaPolicyMasters   SLAPolicyMaster[]
+  sapModules         SAPModuleMaster[]
+  sapSubModules      SAPSubModuleMaster[]
+  assignmentRules    AssignmentRule[]
+  holidayCalendars HolidayCalendar[]
+  auditLogs        AuditLog[]
+  notificationRules NotificationRule[]
+  notifications     Notification[]
+  emailTemplates    EmailTemplate[]
+
+  @@map("tenants")
+}
+
+// ── USERS ────────────────────────────────────────────────────
+
+model User {
+  id           String     @id @default(uuid())
+  tenantId     String     @map("tenant_id")
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  firstName    String     @map("first_name")
+  lastName     String     @map("last_name")
+  role         UserRole   @default(USER)
+  status       UserStatus @default(PENDING)
+  customerId   String?    @map("customer_id")
+  lastLoginAt  DateTime?  @map("last_login_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  tenant              Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer            Customer?      @relation("CustomerUsers", fields: [customerId], references: [id])
+  agent               Agent?
+  customerAdmin       Customer?      @relation("CustomerAdmin")
+  comments            Comment[]
+  createdRecords      ITSMRecord[]   @relation("CreatedBy")
+  approvedTimeEntries TimeEntry[]    @relation("ApprovedBy")
+  auditLogs           AuditLog[]
+  refreshTokens       RefreshToken[]
+  notifications       Notification[]
+  notificationPrefs   NotificationPreference[]
+
+  @@index([tenantId])
+  @@index([email])
+  @@index([role])
+  @@index([status])
+  @@index([customerId])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  token     String    @unique
+  expiresAt DateTime  @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+// ── AGENTS ───────────────────────────────────────────────────
+
+model Agent {
+  id             String      @id @default(uuid())
+  userId         String      @unique @map("user_id")
+  specialization String?                                    // deprecated — use specializations relation
+  level          AgentLevel  @default(L1)
+  timezone       String      @default("UTC")
+  maxConcurrent  Int         @default(5) @map("max_concurrent")
+  agentType      AgentType   @default(AGENT) @map("agent_type")
+  status         AgentStatus @default(AVAILABLE)
+  metadata       Json?       @default("{}")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignments      ITSMRecord[]
+  timeEntries      TimeEntry[]
+  managedCustomers Customer[]          @relation("CustomerPM")
+  customerAgents   CustomerAgent[]
+  specializations  AgentSpecialization[]
+
+  @@index([status])
+  @@index([level])
+  @@map("agents")
+}
+
+// Agent SAP specialization — which modules/sub-modules an agent is expert in
+model AgentSpecialization {
+  id              String   @id @default(uuid())
+  agentId         String   @map("agent_id")
+  sapModuleId     String   @map("sap_module_id")
+  sapSubModuleIds String[] @map("sap_sub_module_ids")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  agent     Agent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  sapModule SAPModuleMaster @relation(fields: [sapModuleId], references: [id])
+
+  @@unique([agentId, sapModuleId])
+  @@index([agentId])
+  @@map("agent_specializations")
+}
+
+// Smart Agent Assignment Rules
+model AssignmentRule {
+  id              String    @id @default(uuid())
+  tenantId        String    @map("tenant_id")
+  customerId      String    @map("customer_id")
+  name            String
+  recordType      String?   @map("record_type")       // INCIDENT, REQUEST, PROBLEM, CHANGE or null=ALL
+  priority        String?                               // P1, P2, P3, P4 or null=ANY
+  sapModuleId     String?   @map("sap_module_id")
+  assignmentMode  String    @map("assignment_mode")     // AUTO_ASSIGN, RECOMMEND, ROUND_ROBIN
+  preferredLevel  String?   @map("preferred_level")     // L1, L2, L3, L4 or null=auto
+  sortOrder       Int       @default(0) @map("sort_order")
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id])
+  customer  Customer        @relation(fields: [customerId], references: [id])
+  sapModule SAPModuleMaster? @relation(fields: [sapModuleId], references: [id])
+
+  @@index([tenantId, customerId])
+  @@index([tenantId, customerId, recordType, priority])
+  @@map("assignment_rules")
+}
+
+// ── CUSTOMERS ────────────────────────────────────────────────
+
+model Customer {
+  id                    String         @id @default(uuid())
+  tenantId              String         @map("tenant_id")
+  companyName           String         @map("company_name")
+  industry              String?
+  country               String?
+  timezone              String         @default("UTC")
+  status                CustomerStatus @default(ACTIVE)
+  website               String?
+  contactName           String?        @map("contact_name")
+  contactEmail          String?        @map("contact_email")
+  contactPhone          String?        @map("contact_phone")
+  billingEmail          String?        @map("billing_email")
+  billingAddress        String?        @map("billing_address")
+  notes                 String?
+  allowedDomains        String[]       @default([]) @map("allowed_domains")
+  adminUserId           String?        @unique @map("admin_user_id")
+  projectManagerAgentId String?        @map("project_manager_agent_id")
+  holidayCalendarId     String?        @map("holiday_calendar_id")
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  adminUser       User?           @relation("CustomerAdmin", fields: [adminUserId], references: [id])
+  projectManager  Agent?          @relation("CustomerPM", fields: [projectManagerAgentId], references: [id])
+  users           User[]          @relation("CustomerUsers")
+  customerAgents  CustomerAgent[]
+  contracts           Contract[]
+  notificationRules   NotificationRule[]
+  records         ITSMRecord[]
+  configurationItems ConfigurationItem[]
+  assignmentRules    AssignmentRule[]
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("customers")
+}
+
+// CustomerAgent join table — agents assigned to a customer
+model CustomerAgent {
+  customerId String   @map("customer_id")
+  agentId    String   @map("agent_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  agent    Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@id([customerId, agentId])
+  @@map("customer_agents")
+}
+
+// ── MASTERS ──────────────────────────────────────────────────
+
+// Support Type: defines coverage policy (work week, weekend/holiday rules, SLA pause conditions)
+model SupportTypeMaster {
+  id                  String              @id @default(uuid())
+  tenantId            String              @map("tenant_id")
+  name                String
+  code                String
+  description         String?
+  color               String?             @default("#6366f1")
+  // Work week
+  workDays            Int[]               @map("work_days")
+  // Coverage
+  weekendCoverage     WeekendCoverageType    @default(NONE) @map("weekend_coverage")
+  holidayCoverage     HolidayCoverageType    @default(NONE) @map("holiday_coverage")
+  afterHoursCoverage  AfterHoursCoverageType @default(NONE) @map("after_hours_coverage")
+  weekendMultiplier   Float               @default(2.0) @map("weekend_multiplier")
+  holidayMultiplier   Float               @default(2.0) @map("holiday_multiplier")
+  afterHoursMultiplier Float              @default(1.5) @map("after_hours_multiplier")
+  // SLA pause conditions (enum-like strings)
+  slaPauseConditions  String[]            @default([]) @map("sla_pause_conditions")
+  // Priority coverage
+  onCallPriorities    String[]            @default([]) @map("on_call_priorities")
+  priorityScope       PriorityScope       @default(ALL) @map("priority_scope")
+  slaEnabled          Json                @default("{\"P1\":true,\"P2\":true,\"P3\":true,\"P4\":true}") @map("sla_enabled")
+  isActive            Boolean             @default(true) @map("is_active")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contracts Contract[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("support_type_masters")
+}
+
+// SLA Policy Master: defines response/resolution targets and warning threshold
+model SLAPolicyMaster {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  name             String
+  code             String
+  description      String?
+  color            String?  @default("#6366f1")
+  warningThreshold Float    @default(0.80) @map("warning_threshold")
+  // Per-priority targets: { P1: { response: 15, resolution: 240, enabled: true }, ... }
+  priorities       Json     @default("{}") @map("priorities")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contracts Contract[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("sla_policy_masters")
+}
+
+// SAP Module Master: top-level SAP functional modules
+model SAPModuleMaster {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  code        String
+  name        String
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subModules  SAPSubModuleMaster[]
+  records     ITSMRecord[]       @relation("RecordSAPModule")
+  agentSpecializations AgentSpecialization[]
+  assignmentRules    AssignmentRule[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("sap_module_masters")
+}
+
+// SAP Sub-Module Master: child modules under a parent SAP module
+model SAPSubModuleMaster {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  moduleId    String   @map("module_id")
+  code        String
+  name        String
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  module      SAPModuleMaster  @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  records     ITSMRecord[]     @relation("RecordSAPSubModule")
+
+  @@unique([tenantId, moduleId, code])
+  @@index([tenantId, moduleId])
+  @@map("sap_sub_module_masters")
+}
+
+// ── CONTRACTS ────────────────────────────────────────────────
+
+model Contract {
+  id                 String    @id @default(uuid())
+  customerId         String    @map("customer_id")
+  contractNumber     String    @unique @map("contract_number")
+  supportTypeMasterId String?  @map("support_type_master_id")
+  slaPolicyMasterId  String?   @map("sla_policy_master_id")
+  startDate          DateTime  @map("start_date")
+  endDate            DateTime  @map("end_date")
+  autoRenewal        Boolean   @default(false) @map("auto_renewal")
+  renewalNoticeDays  Int       @default(60) @map("renewal_notice_days")
+  billingAmount      Decimal   @map("billing_amount")
+  currency           String    @default("USD")
+  billingFrequency   String    @default("Monthly") @map("billing_frequency")
+  paymentTerms       String    @default("Net 30") @map("payment_terms")
+  notes              String?
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  customer          Customer               @relation(fields: [customerId], references: [id])
+  supportTypeMaster SupportTypeMaster?     @relation(fields: [supportTypeMasterId], references: [id])
+  slaPolicyMaster   SLAPolicyMaster?       @relation(fields: [slaPolicyMasterId], references: [id])
+  shifts            ContractShift[]
+  holidayCalendars  ContractHolidayCalendar[]
+  records           ITSMRecord[]
+
+  @@index([customerId])
+  @@index([endDate])
+  @@map("contracts")
+}
+
+// ── SHIFTS ───────────────────────────────────────────────────
+
+// Shift: operational staffing — time window only, no SLA logic
+model Shift {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  name         String
+  startTime    String   @map("start_time")
+  endTime      String   @map("end_time")
+  timezone     String   @default("UTC")
+  breakMinutes Int      @default(0) @map("break_minutes")
+  status       String   @default("active")
+  metadata     Json?    @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id])
+  contracts ContractShift[]
+
+  @@index([tenantId])
+  @@map("shifts")
+}
+
+model ContractShift {
+  contractId String   @map("contract_id")
+  shiftId    String   @map("shift_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  contract Contract @relation(fields: [contractId], references: [id])
+  shift    Shift    @relation(fields: [shiftId], references: [id])
+
+  @@id([contractId, shiftId])
+  @@map("contract_shifts")
+}
+
+// ── HOLIDAY CALENDARS ────────────────────────────────────────
+
+model HolidayCalendar {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  country   String
+  year      Int
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant                    @relation(fields: [tenantId], references: [id])
+  dates     HolidayDate[]
+  contracts ContractHolidayCalendar[]
+
+  @@index([tenantId])
+  @@index([country, year])
+  @@map("holiday_calendars")
+}
+
+model HolidayDate {
+  id          String             @id @default(uuid())
+  calendarId  String             @map("calendar_id")
+  date        DateTime
+  name        String
+  supportType HolidaySupportType @default(NONE) @map("support_type")
+
+  calendar HolidayCalendar @relation(fields: [calendarId], references: [id])
+
+  @@index([calendarId])
+  @@index([date])
+  @@map("holiday_dates")
+}
+
+model ContractHolidayCalendar {
+  contractId        String   @map("contract_id")
+  holidayCalendarId String   @map("holiday_calendar_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  contract        Contract        @relation(fields: [contractId], references: [id])
+  holidayCalendar HolidayCalendar @relation(fields: [holidayCalendarId], references: [id])
+
+  @@id([contractId, holidayCalendarId])
+  @@map("contract_holiday_calendars")
+}
+
+// ── CONFIGURATION ITEMS (CMDB) ───────────────────────────────
+
+model ConfigurationItem {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  customerId  String?  @map("customer_id")
+  ciType      CIType   @map("ci_type")
+  name        String
+  environment String?
+  sid         String?
+  hostname    String?
+  version     String?
+  metadata    Json?    @default("{}")
+  status      CIStatus @default(ACTIVE)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [id])
+  customer Customer?    @relation(fields: [customerId], references: [id])
+  records  ITSMRecord[]
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([ciType])
+  @@index([status])
+  @@map("configuration_items")
+}
+
+// ── ITSM RECORDS ─────────────────────────────────────────────
+
+model ITSMRecord {
+  id              String       @id @default(uuid())
+  tenantId        String       @map("tenant_id")
+  recordType      RecordType   @map("record_type")
+  recordNumber    String       @unique @map("record_number")
+  title           String
+  description     String
+  priority        Priority     @default(P3)
+  status          RecordStatus @default(NEW)
+  customerId      String?      @map("customer_id")
+  contractId      String?      @map("contract_id")
+  assignedAgentId String?      @map("assigned_agent_id")
+  ciId            String?      @map("ci_id")
+  parentProblemId String?      @map("parent_problem_id")
+  createdById     String       @map("created_by")
+  tags            String[]     @default([])
+  sapModuleId     String?      @map("sap_module_id")
+  sapSubModuleId  String?      @map("sap_sub_module_id")
+  metadata        Json?        @default("{}")
+  resolvedAt      DateTime?    @map("resolved_at")
+  closedAt        DateTime?    @map("closed_at")
+  respondedAt     DateTime?    @map("responded_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  tenant          Tenant             @relation(fields: [tenantId], references: [id])
+  customer        Customer?          @relation(fields: [customerId], references: [id])
+  contract        Contract?          @relation(fields: [contractId], references: [id])
+  assignedAgent   Agent?             @relation(fields: [assignedAgentId], references: [id])
+  ci              ConfigurationItem? @relation(fields: [ciId], references: [id])
+  parentProblem   ITSMRecord?        @relation("ProblemIncidents", fields: [parentProblemId], references: [id])
+  linkedIncidents ITSMRecord[]       @relation("ProblemIncidents")
+  sapModule       SAPModuleMaster?   @relation("RecordSAPModule", fields: [sapModuleId], references: [id])
+  sapSubModule    SAPSubModuleMaster? @relation("RecordSAPSubModule", fields: [sapSubModuleId], references: [id])
+  createdBy       User               @relation("CreatedBy", fields: [createdById], references: [id])
+  slaTracking     SLATracking?
+  timeEntries     TimeEntry[]
+  comments        Comment[]
+  emailLogs       EmailLog[]
+  notifications   Notification[]
+  auditLogs       AuditLog[]
+
+  @@index([tenantId])
+  @@index([recordType])
+  @@index([status])
+  @@index([priority])
+  @@index([createdAt])
+  @@index([assignedAgentId])
+  @@index([customerId])
+  @@map("itsm_records")
+}
+
+// ── SLA TRACKING ─────────────────────────────────────────────
+
+model SLATracking {
+  id                    String    @id @default(uuid())
+  recordId              String    @unique @map("record_id")
+  responseDeadline      DateTime  @map("response_deadline")
+  resolutionDeadline    DateTime  @map("resolution_deadline")
+  respondedAt           DateTime? @map("responded_at")
+  pausedAt              DateTime? @map("paused_at")
+  pausedMinutes         Int       @default(0) @map("paused_minutes")
+  breachResponse        Boolean   @default(false) @map("breach_response")
+  breachResolution      Boolean   @default(false) @map("breach_resolution")
+  warningResponseSent   Boolean   @default(false) @map("warning_response_sent")
+  warningResolutionSent Boolean   @default(false) @map("warning_resolution_sent")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  record       ITSMRecord        @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  pauseHistory SLAPauseHistory[]
+
+  @@index([responseDeadline])
+  @@index([resolutionDeadline])
+  @@map("sla_tracking")
+}
+
+model SLAPauseHistory {
+  id             String    @id @default(uuid())
+  slaId          String    @map("sla_id")
+  pausedAt       DateTime  @map("paused_at")
+  resumedAt      DateTime? @map("resumed_at")
+  reason         String?
+  pausedByUserId String?   @map("paused_by_user_id")
+
+  sla SLATracking @relation(fields: [slaId], references: [id], onDelete: Cascade)
+
+  @@index([slaId])
+  @@map("sla_pause_history")
+}
+
+// ── TIME ENTRIES ─────────────────────────────────────────────
+
+model TimeEntry {
+  id           String          @id @default(uuid())
+  recordId     String          @map("record_id")
+  agentId      String          @map("agent_id")
+  hours        Decimal
+  description  String
+  workDate     DateTime        @map("work_date")
+  status       TimeEntryStatus @default(PENDING)
+  approvedById String?         @map("approved_by")
+  approvedAt   DateTime?       @map("approved_at")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  record     ITSMRecord @relation(fields: [recordId], references: [id])
+  agent      Agent      @relation(fields: [agentId], references: [id])
+  approvedBy User?      @relation("ApprovedBy", fields: [approvedById], references: [id])
+
+  @@index([recordId])
+  @@index([agentId])
+  @@index([status])
+  @@map("time_entries")
+}
+
+// ── COMMENTS ─────────────────────────────────────────────────
+
+model Comment {
+  id           String   @id @default(uuid())
+  recordId     String   @map("record_id")
+  authorId     String   @map("author_id")
+  text         String
+  internalFlag Boolean  @default(false) @map("internal_flag")
+  attachments  Json?    @default("[]")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  record ITSMRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  author User       @relation(fields: [authorId], references: [id])
+
+  @@index([recordId])
+  @@map("comments")
+}
+
+// ── EMAIL LOG ────────────────────────────────────────────────
+
+model EmailLog {
+  id          String      @id @default(uuid())
+  recordId    String?     @map("record_id")
+  templateKey String      @map("template_key")
+  subject     String
+  recipient   String
+  cc          String[]    @default([])
+  body        String
+  status      EmailStatus @default(PENDING)
+  sentAt      DateTime?   @map("sent_at")
+  error       String?
+  retryCount  Int         @default(0) @map("retry_count")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  record ITSMRecord? @relation(fields: [recordId], references: [id])
+
+  @@index([recordId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("email_logs")
+}
+
+// ── AUDIT LOG ────────────────────────────────────────────────
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  tenantId   String?     @map("tenant_id")
+  userId     String?     @map("user_id")
+  recordId   String?     @map("record_id")
+  action     AuditAction
+  entityType String      @map("entity_type")
+  entityId   String      @map("entity_id")
+  oldValues  Json?       @map("old_values")
+  newValues  Json?       @map("new_values")
+  ipAddress  String?     @map("ip_address")
+  userAgent  String?     @map("user_agent")
+  metadata   Json?       @default("{}")
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  tenant Tenant?     @relation(fields: [tenantId], references: [id])
+  user   User?       @relation(fields: [userId], references: [id])
+  record ITSMRecord? @relation(fields: [recordId], references: [id])
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([recordId])
+  @@index([action])
+  @@index([entityType])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ── Notification System ───────────────────────────────────────
+
+model EmailTemplate {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  templateKey     String   @map("template_key")       // RECORD_CREATED, STATUS_CHANGED, etc.
+  label           String                               // "Ticket Created"
+  description     String?                              // "When a new ticket is created"
+  subjectTemplate String   @map("subject_template")    // Handlebars subject
+  bodyTemplate    String   @map("body_template")       // Handlebars HTML body
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+
+  primaryRules    NotificationRule[] @relation("PrimaryTemplate")
+  secondaryRules  NotificationRule[] @relation("SecondaryTemplate")
+  escalationRules NotificationRule[] @relation("EscalationTemplate")
+
+  @@unique([tenantId, templateKey])
+  @@map("email_templates")
+}
+
+model NotificationRule {
+  id                    String    @id @default(uuid())
+  tenantId              String    @map("tenant_id")
+  customerId            String?   @map("customer_id")
+  event                 String
+  priority              String?
+  statusFilter          String?   @map("status_filter")
+  recipients            Json      @default("[]")
+  primaryTemplateId     String?   @map("primary_template_id")
+  secondaryTemplateId   String?   @map("secondary_template_id")
+  escalationTemplateId  String?   @map("escalation_template_id")
+  emailEnabled          Boolean   @default(true) @map("email_enabled")
+  inAppEnabled          Boolean   @default(true) @map("in_app_enabled")
+  isActive              Boolean   @default(true) @map("is_active")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  tenant              Tenant         @relation(fields: [tenantId], references: [id])
+  customer            Customer?      @relation(fields: [customerId], references: [id])
+  primaryTemplate     EmailTemplate? @relation("PrimaryTemplate", fields: [primaryTemplateId], references: [id])
+  secondaryTemplate   EmailTemplate? @relation("SecondaryTemplate", fields: [secondaryTemplateId], references: [id])
+  escalationTemplate  EmailTemplate? @relation("EscalationTemplate", fields: [escalationTemplateId], references: [id])
+
+  @@index([tenantId, event])
+  @@index([tenantId, customerId, event])
+  @@map("notification_rules")
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  tenantId  String    @map("tenant_id")
+  userId    String    @map("user_id")
+  recordId  String?   @map("record_id")
+  event     String
+  title     String
+  body      String
+  isRead    Boolean   @default(false) @map("is_read")
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id])
+  user   User         @relation(fields: [userId], references: [id])
+  record ITSMRecord?  @relation(fields: [recordId], references: [id])
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@index([tenantId])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  event     String
+  email     Boolean  @default(true)
+  inApp     Boolean  @default(true) @map("in_app")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, event])
+  @@map("notification_preferences")
+}
