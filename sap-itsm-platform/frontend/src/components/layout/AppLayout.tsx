@@ -215,7 +215,7 @@ export default function AppLayout() {
             <Target className="w-5 h-5 text-white" />
           </div>
           <div className="leading-tight">
-            <p className="text-white font-bold text-base tracking-tight leading-none">Service Desk Pro</p>
+            <p className="text-white font-bold text-base tracking-tight leading-none">Service Desk Intraedge</p>
             <p className="text-white/60 text-[11px] font-medium mt-0.5">{user?.tenant?.name || 'ITSM Platform'}</p>
           </div>
         </NavLink>

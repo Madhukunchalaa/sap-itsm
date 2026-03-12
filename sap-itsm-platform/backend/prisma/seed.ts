@@ -8,11 +8,11 @@ async function main() {
 
   // ── Tenant ────────────────────────────────────────────────
   const tenant = await prisma.tenant.upsert({
-    where: { slug: 'acme-corp' },
+    where: { slug: 'intraedge' },
     update: {},
     create: {
-      name: 'ACME Corporation',
-      slug: 'acme-corp',
+      name: 'Intraedge',
+      slug: 'intraedge',
       timezone: 'America/New_York',
       country: 'US',
       status: 'ACTIVE',
@@ -40,11 +40,11 @@ async function main() {
 
   // NOTE: customerId is set AFTER customer creation below
   const companyAdmin = await prisma.user.upsert({
-    where: { email: 'admin@acme.com' },
+    where: { email: 'admin@intraedge.com' },
     update: {},
     create: {
       tenantId: tenant.id,
-      email: 'admin@acme.com',
+      email: 'admin@intraedge.com',
       passwordHash: pw,
       firstName: 'John',
       lastName: 'Admin',
@@ -54,11 +54,11 @@ async function main() {
   });
 
   const agentUser1 = await prisma.user.upsert({
-    where: { email: 'agent1@acme.com' },
+    where: { email: 'agent1@intraedge.com' },
     update: {},
     create: {
       tenantId: tenant.id,
-      email: 'agent1@acme.com',
+      email: 'agent1@intraedge.com',
       passwordHash: pw,
       firstName: 'Alice',
       lastName: 'Agent',
@@ -68,11 +68,11 @@ async function main() {
   });
 
   const agentUser2 = await prisma.user.upsert({
-    where: { email: 'agent2@acme.com' },
+    where: { email: 'agent2@intraedge.com' },
     update: {},
     create: {
       tenantId: tenant.id,
-      email: 'agent2@acme.com',
+      email: 'agent2@intraedge.com',
       passwordHash: pw,
       firstName: 'Bob',
       lastName: 'Support',
@@ -82,11 +82,11 @@ async function main() {
   });
 
   const pmUser = await prisma.user.upsert({
-    where: { email: 'pm@acme.com' },
+    where: { email: 'pm@intraedge.com' },
     update: {},
     create: {
       tenantId: tenant.id,
-      email: 'pm@acme.com',
+      email: 'pm@intraedge.com',
       passwordHash: pw,
       firstName: 'Carol',
       lastName: 'PM',
@@ -97,11 +97,11 @@ async function main() {
 
   // NOTE: customerId is set AFTER customer creation below
   const endUser = await prisma.user.upsert({
-    where: { email: 'user@acme.com' },
+    where: { email: 'user@intraedge.com' },
     update: {},
     create: {
       tenantId: tenant.id,
-      email: 'user@acme.com',
+      email: 'user@intraedge.com',
       passwordHash: pw,
       firstName: 'Dave',
       lastName: 'User',
@@ -385,11 +385,11 @@ async function main() {
   console.log('─────────────────────────────────────');
   console.log('Login credentials (all use password: Admin@123456)');
   console.log('  Super Admin:    superadmin@itsm.local  → sees everything');
-  console.log('  Company Admin:  admin@acme.com         → sees Beta Industries only');
-  console.log('  Agent L2:       agent1@acme.com        → sees assigned tickets only');
-  console.log('  Agent L3:       agent2@acme.com        → sees assigned tickets only');
-  console.log('  Project Mgr:    pm@acme.com            → sees Beta Industries (via CustomerAgent)');
-  console.log('  End User:       user@acme.com          → sees own tickets only');
+  console.log('  Company Admin:  admin@intraedge.com         → sees Beta Industries only');
+  console.log('  Agent L2:       agent1@intraedge.com        → sees assigned tickets only');
+  console.log('  Agent L3:       agent2@intraedge.com        → sees assigned tickets only');
+  console.log('  Project Mgr:    pm@intraedge.com            → sees Beta Industries (via CustomerAgent)');
+  console.log('  End User:       user@intraedge.com          → sees own tickets only');
 }
 
 main()
