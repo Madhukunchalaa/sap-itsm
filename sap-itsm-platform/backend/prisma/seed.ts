@@ -155,6 +155,38 @@ async function main() {
 
   console.log('✅ Agents created (including PM agent)');
 
+  // ── Support Type Master ───────────────────────────────────
+  const supportType = await prisma.supportTypeMaster.upsert({
+    where: { tenantId_code: { tenantId: tenant.id, code: 'GOLD' } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      name: 'Gold Support',
+      code: 'GOLD',
+      workDays: [1, 2, 3, 4, 5],
+      afterHoursCoverage: 'ON_CALL',
+      weekendCoverage: 'ON_CALL',
+      holidayCoverage: 'NONE',
+    },
+  });
+
+  // ── SLA Policy Master ─────────────────────────────────────
+  const slaPolicy = await prisma.sLAPolicyMaster.upsert({
+    where: { tenantId_code: { tenantId: tenant.id, code: 'DEFAULT' } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      name: 'Default SLA Policy',
+      code: 'DEFAULT',
+      priorities: {
+        P1: { response: 15, resolution: 240 },
+        P2: { response: 60, resolution: 480 },
+        P3: { response: 240, resolution: 1440 },
+        P4: { response: 480, resolution: 2880 },
+      },
+    },
+  });
+
   // ── Shifts ────────────────────────────────────────────────
   const shift = await prisma.shift.create({
     data: {
@@ -164,8 +196,6 @@ async function main() {
       endTime: '18:00',
       timezone: 'America/New_York',
       breakMinutes: 60,
-      workDays: [1, 2, 3, 4, 5], // Mon-Fri
-      supportType: 'BUSINESS_HOURS',
     },
   });
   console.log('✅ Shift created');
@@ -212,21 +242,13 @@ async function main() {
     data: {
       customerId: customer.id,
       contractNumber: `CON-2024-001`,
-      contractType: 'GOLD',
+      supportTypeMasterId: supportType.id,
+      slaPolicyMasterId: slaPolicy.id,
       startDate: new Date('2024-01-01'),
       endDate: new Date('2024-12-31'),
-      afterHoursMultiplier: 1.5,
-      weekendMultiplier: 2.0,
-      holidaySupport: true,
       autoRenewal: true,
       billingAmount: 50000,
       currency: 'USD',
-      slaConfig: {
-        P1: { response: 15, resolution: 240 },
-        P2: { response: 60, resolution: 480 },
-        P3: { response: 240, resolution: 1440 },
-        P4: { response: 480, resolution: 2880 },
-      },
       shifts: { create: { shiftId: shift.id } },
     },
   });

@@ -1,4 +1,5 @@
 import 'dotenv/config';
+process.env.NO_REDIS = 'true';
 import app from './app';
 import { logger } from './config/logger';
 import { prisma } from './config/database';
@@ -99,13 +100,17 @@ async function bootstrap() {
       }
     }
 
-    await redis.ping();
-    logger.info('✅ Redis connected');
+    if (process.env.NO_REDIS !== 'true') {
+      await redis.ping();
+      logger.info('✅ Redis connected');
 
-    startSLAWorker();
-    startEmailWorker();
-    startEscalationWorker();
-    logger.info('✅ Workers started');
+      startSLAWorker();
+      startEmailWorker();
+      startEscalationWorker();
+      logger.info('✅ Workers started');
+    } else {
+      logger.info('ℹ️  Skipping Redis ping and Workers (NO_REDIS mode)');
+    }
 
     app.listen(PORT, '0.0.0.0', () => {
       logger.info(`✅ Server running on port ${PORT} [${process.env.NODE_ENV}]`);

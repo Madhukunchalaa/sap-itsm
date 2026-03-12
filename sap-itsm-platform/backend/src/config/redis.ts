@@ -28,9 +28,19 @@ const getBullConnection = () => {
 
 // IORedis instance for direct cache use
 const createRedisClient = () => {
+  const NO_REDIS = 'true'; // Forced for local dev
+  if (NO_REDIS === 'true') {
+    logger.warn('⚠️  NO_REDIS=true: Using ioredis-mock for local development');
+    const RedisMock = require('ioredis-mock');
+    return new RedisMock();
+  }
+
   const retryStrategy = (times: number) => {
-    if (times > 10) return null;
-    return Math.min(times * 200, 3000);
+    if (times > 3) {
+        logger.error('❌ Redis connection failed after 3 attempts. Set NO_REDIS=true to use a mock.');
+        return null;
+    }
+    return Math.min(times * 1000, 3000);
   };
   if (process.env.REDIS_URL) {
     return new IORedis(process.env.REDIS_URL, {

@@ -1,0 +1,15 @@
+Record #,Type,Title,Priority,Status,Customer,Assigned Agent,Created By,SAP Module,Created,Updated
+PRB-2026-000001,PROBLEM,Material Upload Programme,P3,NEW,SEPC Power,Raju -,System Administrator,MM - Materials Management,12-03-2026,12-03-2026
+REQ-2026-000006,REQUEST,Purchase Requisition - My Inbox Enhancement,P3,NEW,SEPC Power,Rithvick -,System Administrator,MM - Materials Management,12-03-2026,12-03-2026
+REQ-2026-000005,REQUEST,"Asset Purchase Requisition (PR) is rejected at 1st level or 2nd level approval in Flexible Workflow, sometimes SAP does not allow changes in the same PR and shows an error or display-only mode",P2,NEW,Anpara Energy,,Ratnam Chandra,MM - Materials Management,10-03-2026,10-03-2026
+REQ-2026-000004,REQUEST,"email notification issue. The SOST email cannot be sent for the workflow task “Approve P”, and it is showing the error “Cannot be sent.”",P1,NEW,Anpara Energy,,Ratnam Chandra,MM - Materials Management,09-03-2026,09-03-2026
+REQ-2026-000003,REQUEST,Notifications are not received from sender and recipient email IDs in PR workflows,P2,OPEN,Anpara Energy,Neelavardhan -,Ratnam Chandra,,05-03-2026,09-03-2026
+REQ-2026-000002,REQUEST,Attachment of upload and display field on the Gate Pass creation screen,P2,IN_PROGRESS,Anpara Energy,Raju -,Ratnam Chandra,,05-03-2026,05-03-2026
+REQ-2026-000001,REQUEST,PO Upload Programe,P3,IN_PROGRESS,Anpara Energy,Raju -,Ratnam Chandra,,04-03-2026,05-03-2026
+CHG-2026-000001,CHANGE,Reservation and Goods Issue aginst reservation through excel upload,P2,IN_PROGRESS,Anpara Energy,Sai -,Ratnam Chandra,,04-03-2026,05-03-2026
+INC-2026-000006,INCIDENT,Material Master Upload,P3,OPEN,Anpara Energy,Sai -,Ratnam Chandra,,04-03-2026,04-03-2026
+INC-2026-000005,INCIDENT,test P1 notifications,P1,CLOSED,SEPC Power,Sai -,Nagaraju S,,04-03-2026,05-03-2026
+INC-2026-000004,INCIDENT,SM30 Validation,P3,RESOLVED,SEPC Power,Dasarathi -,Nagaraju S,,04-03-2026,05-03-2026
+INC-2026-000003,INCIDENT,Test for notification,P2,CLOSED,SEPC Power,Dasarathi -,System Administrator,,04-03-2026,12-03-2026
+INC-2026-000002,INCIDENT,FB60 Workflow,P1,NEW,Anpara Energy,Dasarathi -,Ratnam Chandra,,04-03-2026,04-03-2026
+INC-2026-000001,INCIDENT,Purchase Requisition,P4,PENDING,SEPC Power,MM Support,Nagaraju S,,02-03-2026,09-03-2026
