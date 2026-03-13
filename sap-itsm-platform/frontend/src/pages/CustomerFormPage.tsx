@@ -69,7 +69,7 @@ export default function CustomerFormPage() {
         adminUserId: existing.adminUserId || '',
         projectManagerAgentId: existing.projectManagerAgentId || '',
         holidayCalendarId: existing.holidayCalendarId || '',
-        agentIds: [],
+        agentIds: (existing.customerAgents || []).map((ca: any) => ca.agentId),
         notes: existing.notes || '',
         allowedDomains: (existing.allowedDomains || []).join(', '),
       });

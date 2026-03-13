@@ -9,11 +9,11 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { setUser, setTokens } = useAuthStore();
 
-  const [email, setEmail]       = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPw, setShowPw]     = useState(false);
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,16 +49,16 @@ export default function LoginPage() {
             <span className="text-blue-400">Intraedge</span>
           </h1>
           <p className="text-slate-300 text-lg leading-relaxed max-w-md">
-            Multi-tenant ITSM with real-time SLA tracking, automated escalations, 
+            Multi-tenant ITSM with real-time SLA tracking, automated escalations,
             and full audit compliance.
           </p>
 
           <div className="mt-10 grid grid-cols-2 gap-4">
             {[
-              { label: 'SLA Engine',        desc: 'Shift-aware, real-time' },
-              { label: 'Multi-Tenant',       desc: 'Full data isolation' },
-              { label: 'Role-Based Access',  desc: '5 granular roles' },
-              { label: 'Audit Trail',        desc: 'Every change logged' },
+              { label: 'SLA Engine', desc: 'Shift-aware, real-time' },
+              { label: 'Multi-Tenant', desc: 'Full data isolation' },
+              { label: 'Role-Based Access', desc: '5 granular roles' },
+              { label: 'Audit Trail', desc: 'Every change logged' },
             ].map((f) => (
               <div key={f.label} className="bg-white/5 rounded-xl p-4 border border-white/10">
                 <p className="font-semibold text-sm">{f.label}</p>
@@ -144,10 +144,10 @@ export default function LoginPage() {
                 <p className="text-xs font-semibold text-gray-500 mb-2">Dev Quick Login</p>
                 <div className="space-y-1">
                   {[
-                    ['superadmin@itsm.local', 'Super Admin'],
-                    ['admin@intraedge.com',         'Company Admin'],
-                    ['agent1@intraedge.com',         'Agent L2'],
-                    ['user@intraedge.com',           'End User'],
+                    ['superadmin@intraedge.com', 'Super Admin'],
+                    ['admin@intraedge.com', 'Company Admin'],
+                    ['agent1@intraedge.com', 'Agent L2'],
+                    ['user@intraedge.com', 'End User'],
                   ].map(([e, role]) => (
                     <button
                       key={e}
