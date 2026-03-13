@@ -1,0 +1,345 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-e5f6-4a5b-9c8d-7e6f5a4b3c2d",
+		"name": "Service Desk Intraedge API (Production)",
+		"description": "Postman collection for testing the Service Desk Intraedge (SAP ITSM Platform) Production API.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.success) {",
+									"    pm.environment.set(\"access_token\", jsonData.accessToken);",
+									"    pm.environment.set(\"refresh_token\", jsonData.refreshToken);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"superadmin@intraedge.com\",\n    \"password\": \"Admin@123456\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Current User (Me)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/auth/me",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"me"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Customers",
+			"item": [
+				{
+					"name": "List Customers",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/customers",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"customers"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Customer Detail",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/customers/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"customers",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "ENTER_CUSTOMER_ID_HERE"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Customer (Link Agents)",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"agentIds\": [\"AGENT_ID_1\", \"AGENT_ID_2\"]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/customers/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"customers",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "ENTER_CUSTOMER_ID_HERE"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Records (Tickets)",
+			"item": [
+				{
+					"name": "List Records",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/records",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"records"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Record",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"recordType\": \"INCIDENT\",\n    \"priority\": \"HIGH\",\n    \"title\": \"Direct API Test Ticket\",\n    \"description\": \"Testing the production API via Postman\",\n    \"customerId\": \"ENTER_CUSTOMER_ID_HERE\",\n    \"sapModuleId\": \"ENTER_MODULE_ID_HERE\",\n    \"assignedAgentId\": \"ENTER_AGENT_ID_HERE\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/records",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"records"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Agents",
+			"item": [
+				{
+					"name": "List Agents",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/agents",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"agents"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "SAP Modules",
+			"item": [
+				{
+					"name": "List Modules",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/sap-modules",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"sap-modules"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Seed Modules",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/sap-modules/seed",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"sap-modules",
+								"seed"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "https://servicedesk-production-f664.up.railway.app",
+			"type": "string"
+		},
+		{
+			"key": "access_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "refresh_token",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

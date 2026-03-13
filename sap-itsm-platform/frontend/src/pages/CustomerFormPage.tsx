@@ -147,7 +147,7 @@ export default function CustomerFormPage() {
           <Sec icon="🏢" title="Company Details" color="text-blue-700" />
           <div className="space-y-4">
             <F label="Company Name" required>
-              <input value={form.companyName} onChange={e => setF('companyName', e.target.value)} className={ic} placeholder="Acme Corporation" />
+              <input value={form.companyName} onChange={e => setF('companyName', e.target.value)} className={ic} placeholder="Intraedge" />
             </F>
             <div className="grid grid-cols-2 gap-4">
               <F label="Industry">
@@ -181,7 +181,7 @@ export default function CustomerFormPage() {
             </div>
           </div>
           <F label="Allowed Email Domains">
-            <input value={form.allowedDomains} onChange={e => setF('allowedDomains', e.target.value)} className={ic} placeholder="acme.com, acme.in (comma-separated, leave blank for no restriction)" />
+            <input value={form.allowedDomains} onChange={e => setF('allowedDomains', e.target.value)} className={ic} placeholder="intraedge.com, intraedge.in (comma-separated, leave blank for no restriction)" />
             <p className="text-xs text-gray-400 mt-1">Only users with these email domains can be created under this customer. Leave blank for no restriction.</p>
           </F>
         </div>

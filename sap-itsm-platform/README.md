@@ -56,11 +56,11 @@ docker compose --profile migrate run migrate
 | Email                    | Role           |
 |--------------------------|----------------|
 | superadmin@itsm.local    | Super Admin    |
-| admin@acme.com           | Company Admin  |
-| agent1@acme.com          | Agent (L2)     |
-| agent2@acme.com          | Agent (L3)     |
-| pm@acme.com              | Project Manager|
-| user@acme.com            | End User       |
+| admin@intraedge.com      | Company Admin  |
+| agent1@intraedge.com     | Agent (L2)     |
+| agent2@intraedge.com     | Agent (L3)     |
+| pm@intraedge.com         | Project Manager|
+| user@intraedge.com       | End User       |
 
 ---
 

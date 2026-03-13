@@ -4,7 +4,7 @@ import * as bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 export async function seedDatabase() {
-  const existing = await prisma.tenant.findFirst({ where: { slug: 'acme-corp' } });
+  const existing = await prisma.tenant.findFirst({ where: { slug: 'intraedge' } });
   if (existing) {
     console.log('Database already seeded, skipping.');
     return;
@@ -12,8 +12,8 @@ export async function seedDatabase() {
 
   const tenant = await prisma.tenant.create({
     data: {
-      name: 'ACME Corporation',
-      slug: 'acme-corp',
+      name: 'Intraedge',
+      slug: 'intraedge',
       timezone: 'America/New_York',
       country: 'US',
       status: 'ACTIVE',
@@ -38,7 +38,7 @@ export async function seedDatabase() {
   const admin = await prisma.user.create({
     data: {
       tenantId: tenant.id,
-      email: 'admin@acme.com',
+      email: 'admin@intraedge.com',
       passwordHash: pw,
       firstName: 'Company',
       lastName: 'Admin',
@@ -50,7 +50,7 @@ export async function seedDatabase() {
   const agent1User = await prisma.user.create({
     data: {
       tenantId: tenant.id,
-      email: 'agent1@acme.com',
+      email: 'agent1@intraedge.com',
       passwordHash: pw,
       firstName: 'Alice',
       lastName: 'Johnson',
@@ -62,7 +62,7 @@ export async function seedDatabase() {
   const agent2User = await prisma.user.create({
     data: {
       tenantId: tenant.id,
-      email: 'agent2@acme.com',
+      email: 'agent2@intraedge.com',
       passwordHash: pw,
       firstName: 'Bob',
       lastName: 'Smith',

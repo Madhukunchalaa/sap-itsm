@@ -262,7 +262,7 @@ async function main() {
       name: 'SAP ERP Production',
       environment: 'PROD',
       sid: 'PRD',
-      hostname: 'sap-prod.acme.internal',
+      hostname: 'sap-prod.intraedge.internal',
       version: 'S/4HANA 2023',
       status: 'ACTIVE',
     },
@@ -299,7 +299,7 @@ async function main() {
     },
     {
       recordType: 'REQUEST' as RecordType,
-      title: 'New User Creation: john.smith@acme.com',
+      title: 'New User Creation: john.smith@intraedge.com',
       description: 'Please create a new SAP user for John Smith, IT Department. Required roles: MM_BUYER, PR_APPROVER. Valid from 2024-03-01.',
       priority: 'P3' as Priority,
       status: 'NEW' as any,
