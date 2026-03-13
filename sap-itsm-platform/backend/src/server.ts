@@ -1,5 +1,5 @@
 import 'dotenv/config';
-process.env.NO_REDIS = 'true';
+// process.env.NO_REDIS = 'true'; // Removed hardcoded disablement
 import app from './app';
 import { logger } from './config/logger';
 import { prisma } from './config/database';

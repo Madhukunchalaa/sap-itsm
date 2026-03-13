@@ -28,7 +28,7 @@ const getBullConnection = () => {
 
 // IORedis instance for direct cache use
 const createRedisClient = () => {
-  const NO_REDIS = 'true'; // Forced for local dev
+  const NO_REDIS = process.env.NO_REDIS || 'false';
   if (NO_REDIS === 'true') {
     logger.warn('⚠️  NO_REDIS=true: Using ioredis-mock for local development');
     const RedisMock = require('ioredis-mock');
