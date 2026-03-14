@@ -1,395 +1,428 @@
-import { PrismaClient, UserRole, Priority, RecordType } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+// ══════════════════════════════════════════════════════════════
+// CONFIGURABLE VARIABLES — update these before running in prod
+// ══════════════════════════════════════════════════════════════
+
+const CONFIG = {
+  // ── Tenant ────────────────────────────────────────────────
+  tenant: {
+    name: 'Intraedge',
+    slug: 'intraedge',
+    timezone: 'America/New_York',
+    country: 'US',
+  },
+
+  // ── Passwords (all accounts use the same password) ────────
+  defaultPassword: 'Admin@123456',
+
+  // ── Super Admin ───────────────────────────────────────────
+  superAdmin: {
+    email: 'superadmin@itsm.local',
+    firstName: 'Super',
+    lastName: 'Admin',
+  },
+
+  // ── Company Admin ─────────────────────────────────────────
+  companyAdmin: {
+    email: 'admin@intraedge.com',
+    firstName: 'John',
+    lastName: 'Admin',
+  },
+
+  // ── Agents ────────────────────────────────────────────────
+  agents: [
+    {
+      email: 'agent1@intraedge.com',
+      firstName: 'Alice',
+      lastName: 'Agent',
+      specialization: 'SAP Basis',
+      level: 'L2' as const,
+      timezone: 'America/New_York',
+      maxConcurrent: 8,
+    },
+    {
+      email: 'agent2@intraedge.com',
+      firstName: 'Bob',
+      lastName: 'Support',
+      specialization: 'SAP ABAP',
+      level: 'L3' as const,
+      timezone: 'America/Chicago',
+      maxConcurrent: 5,
+    },
+  ],
+
+  // ── Project Manager ───────────────────────────────────────
+  projectManager: {
+    email: 'pm@intraedge.com',
+    firstName: 'Carol',
+    lastName: 'PM',
+    specialization: 'Project Management',
+    level: 'L3' as const,
+    timezone: 'America/New_York',
+  },
+
+  // ── End User ──────────────────────────────────────────────
+  endUser: {
+    email: 'user@intraedge.com',
+    firstName: 'Dave',
+    lastName: 'User',
+  },
+
+  // ── Customer ──────────────────────────────────────────────
+  customer: {
+    companyName: 'Beta Industries',
+    industry: 'Manufacturing',
+    country: 'US',
+    timezone: 'America/New_York',
+  },
+
+  // ── Support Type ──────────────────────────────────────────
+  supportType: {
+    name: 'Gold Support',
+    code: 'GOLD',
+    workDays: [1, 2, 3, 4, 5],
+    afterHoursCoverage: 'ON_CALL' as const,
+    weekendCoverage: 'ON_CALL' as const,
+    holidayCoverage: 'NONE' as const,
+  },
+
+  // ── SLA Policy ────────────────────────────────────────────
+  slaPolicy: {
+    name: 'Default SLA Policy',
+    code: 'DEFAULT',
+    priorities: {
+      P1: { response: 15,  resolution: 240  },
+      P2: { response: 60,  resolution: 480  },
+      P3: { response: 240, resolution: 1440 },
+      P4: { response: 480, resolution: 2880 },
+    },
+  },
+
+  // ── Shift ─────────────────────────────────────────────────
+  shift: {
+    name: 'Business Hours - EST',
+    startTime: '08:00',
+    endTime: '18:00',
+    timezone: 'America/New_York',
+    breakMinutes: 60,
+  },
+
+  // ── Contract ──────────────────────────────────────────────
+  contract: {
+    contractNumber: 'CON-2024-001',
+    startDate: new Date('2024-01-01'),
+    endDate: new Date('2025-12-31'),
+    autoRenewal: true,
+    billingAmount: 50000,
+    currency: 'USD',
+  },
+
+  // ── CMDB ──────────────────────────────────────────────────
+  cmdbItem: {
+    ciType: 'SYSTEM' as const,
+    name: 'SAP ERP Production',
+    environment: 'PROD' as const,
+    sid: 'PRD',
+    hostname: 'sap-prod.intraedge.internal',
+    version: 'S/4HANA 2023',
+  },
+
+  // ── Holiday Calendar ──────────────────────────────────────
+  holidayCalendar: {
+    name: 'US Federal Holidays 2024',
+    country: 'US',
+    year: 2024,
+    dates: [
+      { date: new Date('2024-01-01'), name: "New Year's Day",    supportType: 'EMERGENCY_ONLY' as const },
+      { date: new Date('2024-07-04'), name: 'Independence Day',  supportType: 'EMERGENCY_ONLY' as const },
+      { date: new Date('2024-11-28'), name: 'Thanksgiving Day',  supportType: 'NONE' as const },
+      { date: new Date('2024-12-25'), name: 'Christmas Day',     supportType: 'EMERGENCY_ONLY' as const },
+    ],
+  },
+};
+
+// ══════════════════════════════════════════════════════════════
+// SEED LOGIC — do not edit below unless adding new tables
+// ══════════════════════════════════════════════════════════════
+
 async function main() {
   console.log('🌱 Seeding SAP ITSM Platform...');
 
+  const pw = await bcrypt.hash(CONFIG.defaultPassword, 12);
+
   // ── Tenant ────────────────────────────────────────────────
   const tenant = await prisma.tenant.upsert({
-    where: { slug: 'intraedge' },
+    where: { slug: CONFIG.tenant.slug },
     update: {},
     create: {
-      name: 'Intraedge',
-      slug: 'intraedge',
-      timezone: 'America/New_York',
-      country: 'US',
+      name: CONFIG.tenant.name,
+      slug: CONFIG.tenant.slug,
+      timezone: CONFIG.tenant.timezone,
+      country: CONFIG.tenant.country,
       status: 'ACTIVE',
       settings: { maxUsers: 100, features: ['sla', 'email', 'cmdb'] },
     },
   });
   console.log('✅ Tenant:', tenant.name);
 
-  const pw = await bcrypt.hash('Admin@123456', 12);
-
   // ── Users ─────────────────────────────────────────────────
-  const superAdmin = await prisma.user.upsert({
-    where: { email: 'superadmin@itsm.local' },
+  await prisma.user.upsert({
+    where: { email: CONFIG.superAdmin.email },
     update: {},
     create: {
       tenantId: tenant.id,
-      email: 'superadmin@itsm.local',
+      email: CONFIG.superAdmin.email,
       passwordHash: pw,
-      firstName: 'Super',
-      lastName: 'Admin',
+      firstName: CONFIG.superAdmin.firstName,
+      lastName: CONFIG.superAdmin.lastName,
       role: 'SUPER_ADMIN',
       status: 'ACTIVE',
     },
   });
 
-  // NOTE: customerId is set AFTER customer creation below
   const companyAdmin = await prisma.user.upsert({
-    where: { email: 'admin@intraedge.com' },
+    where: { email: CONFIG.companyAdmin.email },
     update: {},
     create: {
       tenantId: tenant.id,
-      email: 'admin@intraedge.com',
+      email: CONFIG.companyAdmin.email,
       passwordHash: pw,
-      firstName: 'John',
-      lastName: 'Admin',
+      firstName: CONFIG.companyAdmin.firstName,
+      lastName: CONFIG.companyAdmin.lastName,
       role: 'COMPANY_ADMIN',
       status: 'ACTIVE',
     },
   });
 
-  const agentUser1 = await prisma.user.upsert({
-    where: { email: 'agent1@intraedge.com' },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      email: 'agent1@intraedge.com',
-      passwordHash: pw,
-      firstName: 'Alice',
-      lastName: 'Agent',
-      role: 'AGENT',
-      status: 'ACTIVE',
-    },
-  });
-
-  const agentUser2 = await prisma.user.upsert({
-    where: { email: 'agent2@intraedge.com' },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      email: 'agent2@intraedge.com',
-      passwordHash: pw,
-      firstName: 'Bob',
-      lastName: 'Support',
-      role: 'AGENT',
-      status: 'ACTIVE',
-    },
-  });
+  const agentUsers = await Promise.all(
+    CONFIG.agents.map(a =>
+      prisma.user.upsert({
+        where: { email: a.email },
+        update: {},
+        create: {
+          tenantId: tenant.id,
+          email: a.email,
+          passwordHash: pw,
+          firstName: a.firstName,
+          lastName: a.lastName,
+          role: 'AGENT',
+          status: 'ACTIVE',
+        },
+      })
+    )
+  );
 
   const pmUser = await prisma.user.upsert({
-    where: { email: 'pm@intraedge.com' },
+    where: { email: CONFIG.projectManager.email },
     update: {},
     create: {
       tenantId: tenant.id,
-      email: 'pm@intraedge.com',
+      email: CONFIG.projectManager.email,
       passwordHash: pw,
-      firstName: 'Carol',
-      lastName: 'PM',
+      firstName: CONFIG.projectManager.firstName,
+      lastName: CONFIG.projectManager.lastName,
       role: 'PROJECT_MANAGER',
       status: 'ACTIVE',
     },
   });
 
-  // NOTE: customerId is set AFTER customer creation below
   const endUser = await prisma.user.upsert({
-    where: { email: 'user@intraedge.com' },
+    where: { email: CONFIG.endUser.email },
     update: {},
     create: {
       tenantId: tenant.id,
-      email: 'user@intraedge.com',
+      email: CONFIG.endUser.email,
       passwordHash: pw,
-      firstName: 'Dave',
-      lastName: 'User',
+      firstName: CONFIG.endUser.firstName,
+      lastName: CONFIG.endUser.lastName,
       role: 'USER',
       status: 'ACTIVE',
     },
   });
 
-  console.log('✅ Users created (password: Admin@123456)');
+  console.log('✅ Users created (password:', CONFIG.defaultPassword + ')');
 
-  // ── Agents (including PM — PM needs an Agent record) ──────
-  const agent1 = await prisma.agent.upsert({
-    where: { userId: agentUser1.id },
-    update: {},
-    create: {
-      userId: agentUser1.id,
-      specialization: 'SAP Basis',
-      level: 'L2',
-      timezone: 'America/New_York',
-      maxConcurrent: 8,
-      status: 'AVAILABLE',
-    },
-  });
+  // ── Agents ────────────────────────────────────────────────
+  const agentRecords = await Promise.all(
+    CONFIG.agents.map((a, i) =>
+      prisma.agent.upsert({
+        where: { userId: agentUsers[i].id },
+        update: {},
+        create: {
+          userId: agentUsers[i].id,
+          specialization: a.specialization,
+          level: a.level,
+          timezone: a.timezone,
+          maxConcurrent: a.maxConcurrent,
+          status: 'AVAILABLE',
+        },
+      })
+    )
+  );
 
-  const agent2 = await prisma.agent.upsert({
-    where: { userId: agentUser2.id },
-    update: {},
-    create: {
-      userId: agentUser2.id,
-      specialization: 'SAP ABAP',
-      level: 'L3',
-      timezone: 'America/Chicago',
-      maxConcurrent: 5,
-      status: 'AVAILABLE',
-    },
-  });
-
-  // PM also gets an Agent record so they can be resolved via resolveAgent()
   const pmAgent = await prisma.agent.upsert({
     where: { userId: pmUser.id },
     update: {},
     create: {
       userId: pmUser.id,
-      specialization: 'Project Management',
-      level: 'L3',
-      timezone: 'America/New_York',
+      specialization: CONFIG.projectManager.specialization,
+      level: CONFIG.projectManager.level,
+      timezone: CONFIG.projectManager.timezone,
       maxConcurrent: 0,
       status: 'AVAILABLE',
     },
   });
 
-  console.log('✅ Agents created (including PM agent)');
+  console.log('✅ Agents created');
 
   // ── Support Type Master ───────────────────────────────────
   const supportType = await prisma.supportTypeMaster.upsert({
-    where: { tenantId_code: { tenantId: tenant.id, code: 'GOLD' } },
+    where: { tenantId_code: { tenantId: tenant.id, code: CONFIG.supportType.code } },
     update: {},
     create: {
       tenantId: tenant.id,
-      name: 'Gold Support',
-      code: 'GOLD',
-      workDays: [1, 2, 3, 4, 5],
-      afterHoursCoverage: 'ON_CALL',
-      weekendCoverage: 'ON_CALL',
-      holidayCoverage: 'NONE',
+      name: CONFIG.supportType.name,
+      code: CONFIG.supportType.code,
+      workDays: CONFIG.supportType.workDays,
+      afterHoursCoverage: CONFIG.supportType.afterHoursCoverage,
+      weekendCoverage: CONFIG.supportType.weekendCoverage,
+      holidayCoverage: CONFIG.supportType.holidayCoverage,
     },
   });
 
   // ── SLA Policy Master ─────────────────────────────────────
   const slaPolicy = await prisma.sLAPolicyMaster.upsert({
-    where: { tenantId_code: { tenantId: tenant.id, code: 'DEFAULT' } },
+    where: { tenantId_code: { tenantId: tenant.id, code: CONFIG.slaPolicy.code } },
     update: {},
     create: {
       tenantId: tenant.id,
-      name: 'Default SLA Policy',
-      code: 'DEFAULT',
-      priorities: {
-        P1: { response: 15, resolution: 240 },
-        P2: { response: 60, resolution: 480 },
-        P3: { response: 240, resolution: 1440 },
-        P4: { response: 480, resolution: 2880 },
-      },
+      name: CONFIG.slaPolicy.name,
+      code: CONFIG.slaPolicy.code,
+      priorities: CONFIG.slaPolicy.priorities,
     },
   });
 
-  // ── Shifts ────────────────────────────────────────────────
-  const shift = await prisma.shift.create({
+  // ── Shift ─────────────────────────────────────────────────
+  const existingShift = await prisma.shift.findFirst({
+    where: { tenantId: tenant.id, name: CONFIG.shift.name },
+  });
+  const shift = existingShift ?? await prisma.shift.create({
     data: {
       tenantId: tenant.id,
-      name: 'Business Hours - EST',
-      startTime: '08:00',
-      endTime: '18:00',
-      timezone: 'America/New_York',
-      breakMinutes: 60,
+      name: CONFIG.shift.name,
+      startTime: CONFIG.shift.startTime,
+      endTime: CONFIG.shift.endTime,
+      timezone: CONFIG.shift.timezone,
+      breakMinutes: CONFIG.shift.breakMinutes,
     },
   });
-  console.log('✅ Shift created');
+  console.log('✅ Shift ready');
 
   // ── Customer ──────────────────────────────────────────────
-  const customer = await prisma.customer.create({
-    data: {
-      tenantId: tenant.id,
-      companyName: 'Beta Industries',
-      industry: 'Manufacturing',
-      country: 'US',
-      timezone: 'America/New_York',
-      status: 'ACTIVE',
-      adminUserId: companyAdmin.id,
-      projectManagerAgentId: pmAgent.id,
-    },
+  let customer = await prisma.customer.findFirst({
+    where: { tenantId: tenant.id, companyName: CONFIG.customer.companyName },
   });
-  console.log('✅ Customer created:', customer.companyName);
-
-  // ── Link COMPANY_ADMIN and END USER to Customer ───────────
-  await prisma.user.update({
-    where: { id: companyAdmin.id },
-    data: { customerId: customer.id },
-  });
-  await prisma.user.update({
-    where: { id: endUser.id },
-    data: { customerId: customer.id },
-  });
-  console.log('✅ COMPANY_ADMIN and USER linked to customer');
-
-  // ── CustomerAgent join table — link PM and agents to customer ──
-  await prisma.customerAgent.createMany({
-    data: [
-      { customerId: customer.id, agentId: pmAgent.id },
-      { customerId: customer.id, agentId: agent1.id },
-      { customerId: customer.id, agentId: agent2.id },
-    ],
-    skipDuplicates: true,
-  });
-  console.log('✅ CustomerAgent assignments created (PM + 2 agents → Beta Industries)');
-
-  // ── Contract ──────────────────────────────────────────────
-  const contract = await prisma.contract.create({
-    data: {
-      customerId: customer.id,
-      contractNumber: `CON-2024-001`,
-      supportTypeMasterId: supportType.id,
-      slaPolicyMasterId: slaPolicy.id,
-      startDate: new Date('2024-01-01'),
-      endDate: new Date('2024-12-31'),
-      autoRenewal: true,
-      billingAmount: 50000,
-      currency: 'USD',
-      shifts: { create: { shiftId: shift.id } },
-    },
-  });
-  console.log('✅ Contract created:', contract.contractNumber);
-
-  // ── CMDB Items ────────────────────────────────────────────
-  const ci = await prisma.configurationItem.create({
-    data: {
-      tenantId: tenant.id,
-      ciType: 'SYSTEM',
-      name: 'SAP ERP Production',
-      environment: 'PROD',
-      sid: 'PRD',
-      hostname: 'sap-prod.intraedge.internal',
-      version: 'S/4HANA 2023',
-      status: 'ACTIVE',
-    },
-  });
-  console.log('✅ CI created:', ci.name);
-
-  // ── Sample ITSM Records ───────────────────────────────────
-  const now = new Date();
-  const sampleRecords = [
-    {
-      recordType: 'INCIDENT' as RecordType,
-      title: 'SAP Production System Down - Users Cannot Login',
-      description: 'All users are unable to access the SAP production system since 09:00 AM. Login screen shows "System not available" error. Business operations severely impacted.',
-      priority: 'P1' as Priority,
-      status: 'IN_PROGRESS' as any,
-      assignedAgentId: agent1.id,
-      slaTracking: {
-        responseDeadline: new Date(now.getTime() + 10 * 60 * 1000),
-        resolutionDeadline: new Date(now.getTime() + 3 * 60 * 60 * 1000),
-        respondedAt: now,
-      },
-    },
-    {
-      recordType: 'INCIDENT' as RecordType,
-      title: 'Batch Job ZFINMONTH Failing with Dump',
-      description: 'Month-end financial batch job is failing with ABAP runtime error. Short dump: COMPUTE_INT_ZERODIVIDE. Last successful run was yesterday.',
-      priority: 'P2' as Priority,
-      status: 'OPEN' as any,
-      assignedAgentId: agent2.id,
-      slaTracking: {
-        responseDeadline: new Date(now.getTime() + 45 * 60 * 1000),
-        resolutionDeadline: new Date(now.getTime() + 7 * 60 * 60 * 1000),
-      },
-    },
-    {
-      recordType: 'REQUEST' as RecordType,
-      title: 'New User Creation: john.smith@intraedge.com',
-      description: 'Please create a new SAP user for John Smith, IT Department. Required roles: MM_BUYER, PR_APPROVER. Valid from 2024-03-01.',
-      priority: 'P3' as Priority,
-      status: 'NEW' as any,
-      slaTracking: {
-        responseDeadline: new Date(now.getTime() + 4 * 60 * 60 * 1000),
-        resolutionDeadline: new Date(now.getTime() + 24 * 60 * 60 * 1000),
-      },
-    },
-    {
-      recordType: 'CHANGE' as RecordType,
-      title: 'Transport DEVK123456: Fix tax calculation formula',
-      description: 'Deploy transport request DEVK123456 to production. Contains fix for incorrect tax calculation in SD module. Tested in QA. CAB approved.',
-      priority: 'P2' as Priority,
-      status: 'PENDING' as any,
-      assignedAgentId: agent2.id,
-      slaTracking: {
-        responseDeadline: new Date(now.getTime() + 2 * 60 * 60 * 1000),
-        resolutionDeadline: new Date(now.getTime() + 8 * 60 * 60 * 1000),
-        pausedAt: new Date(),
-        pausedMinutes: 120,
-      },
-    },
-    {
-      recordType: 'PROBLEM' as RecordType,
-      title: 'Recurring SAP memory overflow causing system slowness',
-      description: 'Root cause analysis for recurring memory overflow issues. 5 incidents opened in last 30 days. Suspected memory leak in custom report ZREP_SALES_HEAVY.',
-      priority: 'P2' as Priority,
-      status: 'IN_PROGRESS' as any,
-      assignedAgentId: agent1.id,
-      slaTracking: {
-        responseDeadline: new Date(now.getTime() - 60 * 60 * 1000),
-        resolutionDeadline: new Date(now.getTime() + 5 * 60 * 60 * 1000),
-        respondedAt: new Date(now.getTime() - 30 * 60 * 1000),
-        breachResponse: true,
-      },
-    },
-  ];
-
-  let counter = 1;
-  for (const rec of sampleRecords) {
-    const { slaTracking, ...recordData } = rec;
-    const prefixMap: Record<string, string> = {
-      INCIDENT: 'INC', REQUEST: 'REQ', PROBLEM: 'PRB', CHANGE: 'CHG',
-    };
-    const prefix = prefixMap[recordData.recordType];
-    const recordNumber = `${prefix}-2024-${String(counter++).padStart(6, '0')}`;
-
-    await prisma.iTSMRecord.create({
+  if (!customer) {
+    customer = await prisma.customer.create({
       data: {
         tenantId: tenant.id,
-        recordNumber,
-        customerId: customer.id,
-        contractId: contract.id,
-        ciId: ci.id,
-        createdById: endUser.id,
-        ...recordData,
-        slaTracking: { create: slaTracking },
+        companyName: CONFIG.customer.companyName,
+        industry: CONFIG.customer.industry,
+        country: CONFIG.customer.country,
+        timezone: CONFIG.customer.timezone,
+        status: 'ACTIVE',
+        adminUserId: companyAdmin.id,
+        projectManagerAgentId: pmAgent.id,
       },
     });
   }
-  console.log('✅ Sample ITSM records created');
+  console.log('✅ Customer:', customer.companyName);
+
+  // ── Link users to customer ────────────────────────────────
+  await prisma.user.update({ where: { id: companyAdmin.id }, data: { customerId: customer.id } });
+  await prisma.user.update({ where: { id: endUser.id },      data: { customerId: customer.id } });
+
+  // ── CustomerAgent assignments ─────────────────────────────
+  await prisma.customerAgent.createMany({
+    data: [
+      { customerId: customer.id, agentId: pmAgent.id },
+      ...agentRecords.map(a => ({ customerId: customer.id, agentId: a.id })),
+    ],
+    skipDuplicates: true,
+  });
+  console.log('✅ Agents linked to customer');
+
+  // ── Contract ──────────────────────────────────────────────
+  const existingContract = await prisma.contract.findFirst({
+    where: { customerId: customer.id, contractNumber: CONFIG.contract.contractNumber },
+  });
+  if (!existingContract) {
+    await prisma.contract.create({
+      data: {
+        customerId: customer.id,
+        contractNumber: CONFIG.contract.contractNumber,
+        supportTypeMasterId: supportType.id,
+        slaPolicyMasterId: slaPolicy.id,
+        startDate: CONFIG.contract.startDate,
+        endDate: CONFIG.contract.endDate,
+        autoRenewal: CONFIG.contract.autoRenewal,
+        billingAmount: CONFIG.contract.billingAmount,
+        currency: CONFIG.contract.currency,
+        shifts: { create: { shiftId: shift.id } },
+      },
+    });
+  }
+  console.log('✅ Contract ready');
+
+  // ── CMDB ──────────────────────────────────────────────────
+  const existingCI = await prisma.configurationItem.findFirst({
+    where: { tenantId: tenant.id, name: CONFIG.cmdbItem.name },
+  });
+  if (!existingCI) {
+    await prisma.configurationItem.create({
+      data: {
+        tenantId: tenant.id,
+        ciType: CONFIG.cmdbItem.ciType,
+        name: CONFIG.cmdbItem.name,
+        environment: CONFIG.cmdbItem.environment,
+        sid: CONFIG.cmdbItem.sid,
+        hostname: CONFIG.cmdbItem.hostname,
+        version: CONFIG.cmdbItem.version,
+        status: 'ACTIVE',
+      },
+    });
+  }
+  console.log('✅ CMDB item ready');
 
   // ── Holiday Calendar ──────────────────────────────────────
-  await prisma.holidayCalendar.create({
-    data: {
-      tenantId: tenant.id,
-      name: 'US Federal Holidays 2024',
-      country: 'US',
-      year: 2024,
-      dates: {
-        create: [
-          { date: new Date('2024-01-01'), name: "New Year's Day", supportType: 'EMERGENCY_ONLY' },
-          { date: new Date('2024-07-04'), name: 'Independence Day', supportType: 'EMERGENCY_ONLY' },
-          { date: new Date('2024-11-28'), name: 'Thanksgiving Day', supportType: 'NONE' },
-          { date: new Date('2024-12-25'), name: 'Christmas Day', supportType: 'EMERGENCY_ONLY' },
-        ],
-      },
-    },
+  const existingCal = await prisma.holidayCalendar.findFirst({
+    where: { tenantId: tenant.id, name: CONFIG.holidayCalendar.name },
   });
-  console.log('✅ Holiday calendar created');
+  if (!existingCal) {
+    await prisma.holidayCalendar.create({
+      data: {
+        tenantId: tenant.id,
+        name: CONFIG.holidayCalendar.name,
+        country: CONFIG.holidayCalendar.country,
+        year: CONFIG.holidayCalendar.year,
+        dates: { create: CONFIG.holidayCalendar.dates },
+      },
+    });
+  }
+  console.log('✅ Holiday calendar ready');
 
   console.log('\n🎉 Seed complete!');
   console.log('─────────────────────────────────────');
-  console.log('Login credentials (all use password: Admin@123456)');
-  console.log('  Super Admin:    superadmin@itsm.local  → sees everything');
-  console.log('  Company Admin:  admin@intraedge.com         → sees Beta Industries only');
-  console.log('  Agent L2:       agent1@intraedge.com        → sees assigned tickets only');
-  console.log('  Agent L3:       agent2@intraedge.com        → sees assigned tickets only');
-  console.log('  Project Mgr:    pm@intraedge.com            → sees Beta Industries (via CustomerAgent)');
-  console.log('  End User:       user@intraedge.com          → sees own tickets only');
+  console.log('Login credentials (password:', CONFIG.defaultPassword + ')');
+  console.log('  Super Admin:    ', CONFIG.superAdmin.email);
+  console.log('  Company Admin:  ', CONFIG.companyAdmin.email);
+  console.log('  Project Manager:', CONFIG.projectManager.email);
+  console.log('  End User:       ', CONFIG.endUser.email);
+  CONFIG.agents.forEach(a => console.log('  Agent:          ', a.email));
 }
 
 main()
@@ -397,5 +430,5 @@ main()
   .catch((e) => {
     console.error('❌ Seed failed:', e);
     prisma.$disconnect();
-    process.exit(1);
+    throw e;
   });
