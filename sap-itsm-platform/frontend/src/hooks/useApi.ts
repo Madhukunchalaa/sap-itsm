@@ -90,6 +90,19 @@ export function useAddTimeEntry() {
   });
 }
 
+export function useDeleteRecord() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => recordsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['records'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Ticket deleted successfully');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+}
+
 // ── Agents ────────────────────────────────────────────────────
 export function useAgents(params?: object) {
   return useQuery({

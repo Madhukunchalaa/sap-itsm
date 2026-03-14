@@ -6,7 +6,7 @@ import {
   addCommentSchema, addTimeEntrySchema,
 } from '../validators/record.validators';
 import {
-  createRecord, listRecords, getRecord, updateRecord, addComment, addTimeEntry,
+  createRecord, listRecords, getRecord, updateRecord, addComment, addTimeEntry, deleteRecord,
 } from '../../services/record.service';
 import { prisma } from '../../config/database';
 import { resolveAgent, resolveManagedCustomerIds } from './scopeHelpers';
@@ -242,6 +242,19 @@ router.get('/:id/history',
         include: { user: { select: { firstName: true, lastName: true, email: true } } },
       });
       res.json({ success: true, history });
+    } catch (err) { next(err); }
+  }
+);
+
+// ─────────────────────────────────────────────────────────────
+// DELETE /records/:id — delete (SUPER_ADMIN only)
+// ─────────────────────────────────────────────────────────────
+router.delete('/:id',
+  enforceRole('SUPER_ADMIN'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await deleteRecord(req.params.id, req.user!.tenantId, req.user!.sub);
+      res.json({ success: true, message: 'Record deleted' });
     } catch (err) { next(err); }
   }
 );

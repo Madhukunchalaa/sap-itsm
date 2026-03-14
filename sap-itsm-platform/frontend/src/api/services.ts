@@ -50,6 +50,7 @@ export const recordsApi = {
     apiClient.post(`/records/${id}/time-entry`, data),
 
   getHistory: (id: string) => apiClient.get(`/records/${id}/history`),
+  delete: (id: string) => apiClient.delete(`/records/${id}`),
 };
 
 // ── Agents API ────────────────────────────────────────────────

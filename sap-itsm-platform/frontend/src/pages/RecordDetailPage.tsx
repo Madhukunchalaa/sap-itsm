@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MessageSquare, Timer, Paperclip, Save, X, Send, Lock, Edit2, History } from 'lucide-react';
-import { useRecord, useUpdateRecord, useAddComment, useAddTimeEntry, useAgents } from '../hooks/useApi';
+import { ArrowLeft, MessageSquare, Timer, Paperclip, Save, X, Send, Lock, Edit2, History, Trash2 } from 'lucide-react';
+import { useRecord, useUpdateRecord, useAddComment, useAddTimeEntry, useAgents, useDeleteRecord } from '../hooks/useApi';
 import { auditApi, recordsApi } from '../api/services';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { PriorityBadge, StatusBadge, TypeBadge } from '../components/ui/Badges';
@@ -31,6 +31,7 @@ export default function RecordDetailPage() {
 
   const { data: record, isLoading } = useRecord(id!);
   const updateRecord = useUpdateRecord();
+  const deleteRecord = useDeleteRecord();
   const addComment = useAddComment();
   const addTimeEntry = useAddTimeEntry();
   const { data: agentsData } = useAgents({ limit: 100 });
@@ -43,6 +44,7 @@ export default function RecordDetailPage() {
   const [internalFlag, setInternal] = useState(false);
   const [timeModal, setTimeModal] = useState(false);
   const [timeForm, setTimeForm] = useState({ hours:'', description:'', workDate: format(new Date(),'yyyy-MM-dd') });
+  const [deleteModal, setDeleteModal] = useState(false);
 
   const [editMode, setEditMode] = useState(false);
   const [editedStatus, setEditedStatus] = useState('');
@@ -104,6 +106,11 @@ export default function RecordDetailPage() {
     setTimeForm({ hours:'', description:'', workDate: format(new Date(),'yyyy-MM-dd') });
   };
 
+  const handleDelete = async () => {
+    await deleteRecord.mutateAsync(record.id);
+    navigate('/records');
+  };
+
   const attachmentNames: string[] = record.metadata?.attachmentNames || [];
   const sla = record.slaTracking;
 
@@ -126,10 +133,18 @@ export default function RecordDetailPage() {
           }
         </div>
         {canEdit && !editMode && (
-          <button onClick={handleEnterEdit}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">
-            <Edit2 className="w-4 h-4"/> Edit
-          </button>
+          <div className="flex gap-2">
+            {user?.role === 'SUPER_ADMIN' && (
+              <button onClick={() => setDeleteModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-red-200 rounded-lg text-red-600 hover:bg-red-50">
+                <Trash2 className="w-4 h-4"/> Delete
+              </button>
+            )}
+            <button onClick={handleEnterEdit}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">
+              <Edit2 className="w-4 h-4"/> Edit
+            </button>
+          </div>
         )}
         {editMode && (
           <div className="flex gap-2 flex-shrink-0">
@@ -487,6 +502,19 @@ export default function RecordDetailPage() {
             onChange={e=>setTimeForm(f=>({...f,description:e.target.value}))} placeholder="What did you work on?" rows={3}/>
         </div>
       </Modal>}
+
+      <Modal open={deleteModal} onClose={()=>setDeleteModal(false)} title="Delete Ticket" size="sm"
+        footer={<><Button variant="secondary" onClick={()=>setDeleteModal(false)}>Cancel</Button><Button onClick={handleDelete} loading={deleteRecord.isPending} className="bg-red-600 hover:bg-red-700">Delete Permanently</Button></>}>
+        <div className="space-y-3">
+          <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Trash2 className="w-6 h-6 text-red-600"/>
+          </div>
+          <p className="text-sm text-gray-600 text-center">Are you sure you want to delete ticket <strong>{record.recordNumber}</strong>?</p>
+          <p className="text-xs text-red-500 bg-red-50 p-3 rounded-lg border border-red-100 text-center">
+            This action is permanent and will remove all comments, time entries, and history associated with this ticket.
+          </p>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -480,3 +480,24 @@ export async function addTimeEntry(
 
   return entry;
 }
+
+export async function deleteRecord(id: string, tenantId: string, userId: string) {
+  const record = await prisma.iTSMRecord.findFirst({ where: { id, tenantId } });
+  if (!record) throw new AppError('Record not found', 404, 'NOT_FOUND');
+
+  // Manual cleanup for non-cascading relations
+  await prisma.$transaction([
+    prisma.timeEntry.deleteMany({ where: { recordId: id } }),
+    prisma.notification.deleteMany({ where: { recordId: id } }),
+    prisma.emailLog.deleteMany({ where: { recordId: id } }),
+    prisma.auditLog.deleteMany({ where: { recordId: id } }),
+    prisma.iTSMRecord.delete({ where: { id } }),
+  ]);
+
+  await cache.del(`record:${id}`);
+  
+  // Minimal audit log for the deletion itself - though the AuditLog table for the record is gone,
+  // we might want a global audit log entry of this action. 
+  // However, auditLog utility usually links to a recordId. 
+  // We'll skip specific audit log linking to this record since it's deleted.
+}
