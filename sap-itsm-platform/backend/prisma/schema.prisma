@@ -46,9 +46,11 @@ model User {
   role                UserRole                 @default(USER)
   status              UserStatus               @default(PENDING)
   customerId          String?                  @map("customer_id")
-  lastLoginAt         DateTime?                @map("last_login_at")
-  createdAt           DateTime                 @default(now()) @map("created_at")
-  updatedAt           DateTime                 @updatedAt @map("updated_at")
+  lastLoginAt              DateTime?                @map("last_login_at")
+  passwordResetToken       String?                  @unique @map("password_reset_token")
+  passwordResetExpiry      DateTime?                @map("password_reset_expiry")
+  createdAt                DateTime                 @default(now()) @map("created_at")
+  updatedAt                DateTime                 @updatedAt @map("updated_at")
   agent               Agent?
   auditLogs           AuditLog[]
   comments            Comment[]

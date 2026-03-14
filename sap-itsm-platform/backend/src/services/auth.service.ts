@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { prisma } from '../config/database';
@@ -233,5 +234,51 @@ export async function changePassword(
     entityType: 'User',
     entityId: userId,
     metadata: { action: 'password_change' },
+  });
+}
+
+export async function forgotPassword(email: string): Promise<{ resetToken?: string }> {
+  const user = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
+  // Always return success to avoid email enumeration
+  if (!user || user.status !== 'ACTIVE') return {};
+
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordResetToken: token, passwordResetExpiry: expiry },
+  });
+
+  // Email sending disabled — token returned directly in response
+  return { resetToken: token };
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  const user = await prisma.user.findUnique({ where: { passwordResetToken: token } });
+
+  if (!user || !user.passwordResetExpiry || user.passwordResetExpiry < new Date()) {
+    throw new AppError('Invalid or expired reset token', 400, 'INVALID_RESET_TOKEN');
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, bcryptRounds);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash, passwordResetToken: null, passwordResetExpiry: null },
+  });
+
+  // Revoke all sessions
+  await prisma.refreshToken.updateMany({
+    where: { userId: user.id },
+    data: { revokedAt: new Date() },
+  });
+
+  await auditLog({
+    userId: user.id,
+    action: 'UPDATE',
+    entityType: 'User',
+    entityId: user.id,
+    metadata: { action: 'password_reset' },
   });
 }

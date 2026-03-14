@@ -8,7 +8,9 @@ import { LoadingSpinner } from './components/ui/LoadingSpinner';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 
 // Lazy-loaded pages
-const LoginPage          = lazy(() => import('./pages/LoginPage'));
+const LoginPage             = lazy(() => import('./pages/LoginPage'));
+const ForgotPasswordPage    = lazy(() => import('./pages/ForgotPasswordPage'));
+const ResetPasswordPage     = lazy(() => import('./pages/ResetPasswordPage'));
 const DashboardPage      = lazy(() => import('./pages/DashboardPage'));
 const RecordsPage        = lazy(() => import('./pages/RecordsPage'));
 const RecordDetailPage   = lazy(() => import('./pages/RecordDetailPage'));
@@ -69,6 +71,8 @@ export default function App() {
           <Suspense fallback={<LoadingSpinner fullscreen />}>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
               <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>

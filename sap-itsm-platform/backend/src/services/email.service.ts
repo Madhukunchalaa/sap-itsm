@@ -125,7 +125,42 @@ const TEMPLATES: Record<string, { subject: string; html: string }> = {
       </div>
     `,
   },
+  PASSWORD_RESET: {
+    subject: 'Reset Your Password — Service Desk Intraedge',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px;">
+        <h2 style="color: #1a73e8;">Reset Your Password</h2>
+        <p>Hi {{name}},</p>
+        <p>We received a request to reset your password. Click the button below to set a new password. This link expires in <b>1 hour</b>.</p>
+        <a href="{{resetUrl}}" style="display:inline-block; background:#1a73e8; color:white; padding:12px 24px; text-decoration:none; border-radius:6px; margin:16px 0;">Reset Password</a>
+        <p style="color:#666; font-size:13px;">If you didn't request this, you can safely ignore this email. Your password won't change.</p>
+        <p style="color:#999; font-size:12px;">This link will expire in 1 hour.</p>
+      </div>
+    `,
+  },
 };
+
+export async function sendPasswordResetEmail(email: string, name: string, token: string): Promise<void> {
+  const portalUrl = process.env.PORTAL_URL || 'http://localhost:3000';
+  const resetUrl = `${portalUrl}/reset-password?token=${token}`;
+  const template = TEMPLATES.PASSWORD_RESET;
+  const vars = { name, resetUrl, portalUrl };
+  const subject = Handlebars.compile(template.subject)(vars);
+  const html = Handlebars.compile(template.html)(vars);
+
+  try {
+    await getTransporter().sendMail({
+      from: `"${process.env.SMTP_FROM_NAME || 'Service Desk Intraedge'}" <${process.env.SMTP_FROM_EMAIL}>`,
+      to: email,
+      subject,
+      html,
+    });
+    logger.info(`Password reset email sent to ${email}`);
+  } catch (err: any) {
+    logger.error(`Failed to send password reset email to ${email}:`, err);
+    // Don't throw — silently fail so we don't leak user existence
+  }
+}
 
 export interface SendEmailParams {
   templateKey: string;
@@ -164,7 +199,7 @@ export async function sendEmail(params: SendEmailParams): Promise<void> {
 
   try {
     await getTransporter().sendMail({
-      from: `"${process.env.SMTP_FROM_NAME || 'SAP ITSM'}" <${process.env.SMTP_FROM_EMAIL}>`,
+      from: `"${process.env.SMTP_FROM_NAME || 'Service Desk Intraedge'}" <${process.env.SMTP_FROM_EMAIL}>`,
       to: params.recipient,
       cc: params.cc?.join(', '),
       subject,

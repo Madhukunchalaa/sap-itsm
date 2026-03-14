@@ -6,6 +6,8 @@ import {
   registerSchema,
   refreshTokenSchema,
   changePasswordSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
 } from '../validators/auth.validators';
 import {
   loginUser,
@@ -13,6 +15,8 @@ import {
   refreshTokens,
   logoutUser,
   changePassword,
+  forgotPassword,
+  resetPassword,
 } from '../../services/auth.service';
 
 const router = Router();
@@ -160,6 +164,26 @@ router.get('/debug-scope', verifyJWT, enforceTenantScope, async (req: Request, r
     }
 
     res.json({ success: true, debug });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /auth/forgot-password
+router.post('/forgot-password', validate(forgotPasswordSchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await forgotPassword(req.body.email);
+    res.json({ success: true, message: 'If that email exists, a reset link has been sent.', ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /auth/reset-password
+router.post('/reset-password', validate(resetPasswordSchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await resetPassword(req.body.token, req.body.newPassword);
+    res.json({ success: true, message: 'Password reset successfully.' });
   } catch (err) {
     next(err);
   }
