@@ -9,7 +9,7 @@ COPY . .
 RUN npm install
 
 # Build with API URL baked in
-ENV VITE_API_URL=https://servicedesk-production-f664.up.railway.app
+ENV VITE_API_URL=https://backend-production-5d5fe.up.railway.app
 RUN npm run build
 
 FROM nginx:1.25-alpine AS production
