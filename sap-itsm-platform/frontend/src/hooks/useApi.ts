@@ -96,7 +96,10 @@ export function useDeleteRecord() {
     mutationFn: (id: string) => recordsApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['records'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      // Remove all dashboard variants from cache so next visit always fetches fresh
+      queryClient.removeQueries({ queryKey: ['dashboard'] });
+      queryClient.removeQueries({ queryKey: ['dashboard-pm'] });
+      queryClient.removeQueries({ queryKey: ['dashboard-customer'] });
       toast.success('Ticket deleted successfully');
     },
     onError: (err) => toast.error(getErrorMessage(err)),
