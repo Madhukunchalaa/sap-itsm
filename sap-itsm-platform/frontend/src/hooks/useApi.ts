@@ -8,7 +8,10 @@ export function useDashboard() {
   return useQuery({
     queryKey: ['dashboard'],
     queryFn: () => dashboardApi.overview().then((r) => r.data.dashboard),
-    refetchInterval: 60 * 1000, // Auto-refresh every minute
+    refetchInterval: 30 * 1000,    // Poll every 30s
+    refetchOnMount: 'always',      // Always fetch fresh when component mounts
+    refetchOnWindowFocus: true,    // Fetch when tab regains focus
+    staleTime: 0,                  // Never serve stale data
   });
 }
 
@@ -42,7 +45,9 @@ export function useCreateRecord() {
     mutationFn: (data: object) => recordsApi.create(data).then((r) => r.data.record),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['records'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.removeQueries({ queryKey: ['dashboard'] });
+      queryClient.removeQueries({ queryKey: ['dashboard-pm'] });
+      queryClient.removeQueries({ queryKey: ['dashboard-customer'] });
       toast.success('Record created successfully');
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -57,7 +62,9 @@ export function useUpdateRecord() {
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['record', id] });
       queryClient.invalidateQueries({ queryKey: ['records'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.removeQueries({ queryKey: ['dashboard'] });
+      queryClient.removeQueries({ queryKey: ['dashboard-pm'] });
+      queryClient.removeQueries({ queryKey: ['dashboard-customer'] });
       toast.success('Record updated');
     },
     onError: (err) => toast.error(getErrorMessage(err)),
