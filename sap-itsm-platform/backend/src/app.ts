@@ -26,6 +26,7 @@ import notificationRuleRoutes from './services/notifications/notification.routes
 import notificationInboxRoutes from './services/notifications/inbox.routes';
 import sapModuleRoutes from './api/routes/sapModule.routes';
 import assignmentRuleRoutes from './api/routes/assignmentRule.routes';
+import exportRoutes from './api/routes/export.routes';
 
 const app = express();
 
@@ -108,6 +109,7 @@ app.use(`${API}/notification-rules`, notificationRuleRoutes);
 app.use(`${API}/notifications/inbox`, notificationInboxRoutes);
 app.use(`${API}/sap-modules`, sapModuleRoutes);
 app.use(`${API}/assignment-rules`, assignmentRuleRoutes);
+app.use(`${API}/export`, exportRoutes);
 
 // ── Admin Endpoints (before error handlers!) ──────────────────
 app.post('/admin/fix-record-customers', async (_req, res) => {
