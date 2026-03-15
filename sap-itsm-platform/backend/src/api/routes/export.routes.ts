@@ -43,12 +43,12 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       customers: () => prisma.customer.findMany({
         where,
         include: {
-          projectManagerAgent: { select: { id: true, user: { select: { email: true, firstName: true, lastName: true } } } },
+          projectManager: { select: { id: true, user: { select: { email: true, firstName: true, lastName: true } } } },
         },
       }),
 
       agents: () => prisma.agent.findMany({
-        where: { tenantId },
+        where: { user: { tenantId } },
         include: {
           user: { select: { id: true, email: true, firstName: true, lastName: true, role: true } },
           specializations: true,
@@ -69,11 +69,11 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       }),
 
       contracts: () => prisma.contract.findMany({
-        where,
+        where: { customer: { tenantId } },
         include: {
           customer: { select: { id: true, companyName: true } },
-          supportType: true,
-          slaPolicy: true,
+          supportTypeMaster: true,
+          slaPolicyMaster: true,
           shifts: { include: { shift: true } },
           holidayCalendars: { include: { holidayCalendar: true } },
         },
