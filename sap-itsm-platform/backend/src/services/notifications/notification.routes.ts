@@ -489,4 +489,67 @@ router.post('/preview',
   }
 );
 
+// ── POST /notification-rules/test-email ───────────────────────
+// SUPER_ADMIN only: send a test email to diagnose SMTP config
+router.post('/test-email',
+  enforceRole('SUPER_ADMIN'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { to } = req.body;
+      if (!to) {
+        res.status(400).json({ success: false, error: '"to" email address is required' });
+        return;
+      }
+
+      const start = Date.now();
+      const config = {
+        SMTP_HOST: process.env.SMTP_HOST || '(not set)',
+        SMTP_PORT: process.env.SMTP_PORT || '(not set)',
+        SMTP_SECURE: process.env.SMTP_SECURE || '(not set)',
+        SMTP_USER: process.env.SMTP_USER || '(not set)',
+        SMTP_PASS: process.env.SMTP_PASS ? '***set***' : '(not set)',
+      };
+
+      console.log(`[test-email] Attempting send to ${to} with config:`, config);
+
+      try {
+        const { sendEmail } = await import('../../config/mailer');
+        const result = await sendEmail({
+          to,
+          subject: `[SAP ITSM] Test Email — ${new Date().toISOString()}`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:500px;">
+            <h2 style="color:#1a73e8;">Test Email</h2>
+            <p>This is a test email from SAP ITSM Service Desk.</p>
+            <table style="width:100%;border-collapse:collapse;margin-top:12px;">
+              ${Object.entries(config).map(([k, v]) =>
+                `<tr><td style="padding:6px;background:#f5f5f5;font-weight:bold;">${k}</td><td style="padding:6px;">${v}</td></tr>`
+              ).join('')}
+            </table>
+            <p style="margin-top:16px;color:#666;">Sent at ${new Date().toISOString()}</p>
+          </div>`,
+        });
+
+        const elapsed = Date.now() - start;
+        console.log(`[test-email] ✓ SUCCESS in ${elapsed}ms — messageId: ${result.messageId}`);
+        res.json({
+          success: true,
+          message: `Email sent successfully to ${to}`,
+          messageId: result.messageId,
+          elapsedMs: elapsed,
+          smtpConfig: config,
+        });
+      } catch (err: any) {
+        const elapsed = Date.now() - start;
+        console.log(`[test-email] ✗ FAILED in ${elapsed}ms — ${err?.message}`);
+        res.status(500).json({
+          success: false,
+          error: err?.message || 'Send failed',
+          elapsedMs: elapsed,
+          smtpConfig: config,
+        });
+      }
+    } catch (err) { next(err); }
+  }
+);
+
 export default router;
