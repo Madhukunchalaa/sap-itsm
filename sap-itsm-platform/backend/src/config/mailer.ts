@@ -1,58 +1,62 @@
-import nodemailer, { Transporter } from 'nodemailer';
+import https from 'https';
 
-let transporter: Transporter | null = null;
-
-function createTransporter(): Transporter {
-  const host   = process.env.SMTP_HOST     || 'smtp.gmail.com';
-  const port   = Number(process.env.SMTP_PORT) || 587;
-  const secure = process.env.SMTP_SECURE === 'true';
-  const user   = process.env.SMTP_USER     || '';
-  const pass   = process.env.SMTP_PASS     || '';
-
-  if (!user || !pass) {
-    console.log('[mailer] WARNING: SMTP_USER or SMTP_PASS not configured');
-  }
-
-  console.log(`[mailer] Creating transporter: host=${host} port=${port} secure=${secure} user=${user}`);
-
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: { user, pass },
-    tls: { rejectUnauthorized: false },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-  });
-}
-
-export function getMailer(): Transporter {
-  if (!transporter) transporter = createTransporter();
-  return transporter;
-}
-
-export const FROM_ADDRESS =
-  `"${process.env.SMTP_FROM_NAME || 'Service Desk'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'noreply@example.com'}>`;
+export const FROM_ADDRESS = `"${process.env.SMTP_FROM_NAME || 'Service Desk'}" <${process.env.SMTP_FROM_EMAIL || 'noreply@example.com'}>`;
 
 export async function sendEmail(options: {
   to: string;
   subject: string;
   html: string;
 }): Promise<{ messageId: string }> {
-  const mailer = getMailer();
-  console.log(`[mailer] sendMail → to=${options.to} subject="${options.subject}"`);
-  try {
-    const info = await mailer.sendMail({
-      from: FROM_ADDRESS,
-      to: options.to,
-      subject: options.subject,
-      html: options.html,
+  const apiKey = process.env.BREVO_API_KEY || '';
+  if (!apiKey) throw new Error('BREVO_API_KEY is not set');
+
+  const fromName = process.env.SMTP_FROM_NAME || 'Service Desk';
+  const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'noreply@example.com';
+
+  const body = JSON.stringify({
+    sender: { name: fromName, email: fromEmail },
+    to: [{ email: options.to }],
+    subject: options.subject,
+    htmlContent: options.html,
+  });
+
+  console.log(`[mailer] sendMail via Brevo HTTP API → to=${options.to} subject="${options.subject}"`);
+
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'api.brevo.com',
+      path: '/v3/smtp/email',
+      method: 'POST',
+      headers: {
+        'api-key': apiKey,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+          const parsed = JSON.parse(data);
+          console.log(`[mailer] ✓ sendMail SUCCESS messageId=${parsed.messageId}`);
+          resolve({ messageId: parsed.messageId || '' });
+        } else {
+          console.log(`[mailer] ✗ sendMail FAILED status=${res.statusCode} body=${data}`);
+          reject(new Error(`Brevo API error ${res.statusCode}: ${data}`));
+        }
+      });
     });
-    console.log(`[mailer] ✓ sendMail SUCCESS messageId=${info.messageId}`);
-    return { messageId: info.messageId };
-  } catch (err: any) {
-    console.log(`[mailer] ✗ sendMail FAILED: ${err?.message || err}`);
-    throw err;
-  }
+
+    req.on('error', (err) => {
+      console.log(`[mailer] ✗ sendMail FAILED: ${err.message}`);
+      reject(err);
+    });
+
+    req.setTimeout(15000, () => {
+      req.destroy(new Error('Request timeout'));
+    });
+
+    req.write(body);
+    req.end();
+  });
 }
