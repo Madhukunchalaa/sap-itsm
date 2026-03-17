@@ -231,6 +231,11 @@ export async function createRecord(input: CreateRecordInput) {
   // Notify via notification rules (creates in-app + queues email)
   await notify({ event: 'TICKET_CREATED', recordId: record.id, tenantId: input.tenantId, triggeredBy: input.createdById });
 
+  // Also fire ASSIGNED if an agent was set at creation time
+  if (input.assignedAgentId) {
+    await notify({ event: 'ASSIGNED', recordId: record.id, tenantId: input.tenantId, triggeredBy: input.createdById });
+  }
+
   if (slaTracking) {
     await slaQueue.add('sla-check', { recordId: record.id }, { delay: 60 * 1000 });
   }
