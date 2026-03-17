@@ -1,5 +1,4 @@
 import nodemailer, { Transporter } from 'nodemailer';
-import { logger } from './logger';
 
 let transporter: Transporter | null = null;
 
@@ -11,8 +10,10 @@ function createTransporter(): Transporter {
   const pass   = process.env.SMTP_PASS     || '';
 
   if (!user || !pass) {
-    logger.warn('[mailer] SMTP_USER or SMTP_PASS not configured — emails will not be sent');
+    console.log('[mailer] WARNING: SMTP_USER or SMTP_PASS not configured — emails will not be sent');
   }
+
+  console.log(`[mailer] Creating transporter: host=${host} port=${port} secure=${secure} user=${user}`);
 
   return nodemailer.createTransport({
     host,
@@ -20,6 +21,9 @@ function createTransporter(): Transporter {
     secure,
     auth: { user, pass },
     tls: { rejectUnauthorized: false },
+    connectionTimeout: 10000,   // 10s to establish connection
+    greetingTimeout: 10000,     // 10s for server greeting
+    socketTimeout: 15000,       // 15s idle socket timeout
   });
 }
 
@@ -39,11 +43,18 @@ export async function sendEmail(options: {
   html: string;
 }): Promise<{ messageId: string }> {
   const mailer = getMailer();
-  const info = await mailer.sendMail({
-    from: FROM_ADDRESS,
-    to: options.to,
-    subject: options.subject,
-    html: options.html,
-  });
-  return { messageId: info.messageId };
+  console.log(`[mailer] sendMail → to=${options.to} subject="${options.subject}"`);
+  try {
+    const info = await mailer.sendMail({
+      from: FROM_ADDRESS,
+      to: options.to,
+      subject: options.subject,
+      html: options.html,
+    });
+    console.log(`[mailer] ✓ sendMail SUCCESS messageId=${info.messageId}`);
+    return { messageId: info.messageId };
+  } catch (err: any) {
+    console.log(`[mailer] ✗ sendMail FAILED: ${err?.message || err}`);
+    throw err;
+  }
 }
