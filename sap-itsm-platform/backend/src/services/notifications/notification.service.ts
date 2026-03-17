@@ -404,6 +404,8 @@ export async function notify(input: NotifyInput): Promise<{
   const stats = { rulesMatched: 0, recipientsNotified: 0, emailsQueued: 0, inAppCreated: 0 };
 
   try {
+    console.log(`[notify] ▶ EVENT=${event} recordId=${recordId} tenantId=${tenantId} triggeredBy=${triggeredBy}`);
+
     // 1. Load record
     const record = await prisma.iTSMRecord.findFirst({
       where: { id: recordId, tenantId },
@@ -414,17 +416,22 @@ export async function notify(input: NotifyInput): Promise<{
       },
     });
     if (!record) {
+      console.log(`[notify] ✗ Record ${recordId} not found in DB`);
       logger.warn(`[notify] Record ${recordId} not found`);
       return stats;
     }
+    console.log(`[notify] Record loaded: ${record.recordNumber} priority=${record.priority} assignedAgentId=${record.assignedAgentId} customerId=${record.customerId}`);
 
     // 2. Find matching rules
     const rules = await findMatchingRules(
       tenantId, event, record.priority, record.customerId, payload.newStatus,
     );
     stats.rulesMatched = rules.length;
+    console.log(`[notify] Rules matched: ${rules.length}`);
+    rules.forEach((r, i) => console.log(`[notify]   rule[${i}] event=${r.event} priority=${r.priority} emailEnabled=${r.emailEnabled} primaryTemplateId=${r.primaryTemplateId} recipients=${JSON.stringify(r.recipients)}`));
 
     if (rules.length === 0) {
+      console.log(`[notify] ✗ No rules matched for ${event} on ${record.recordNumber} — check DB notification rules for tenantId=${tenantId}`);
       logger.debug(`[notify] No rules matched for ${event} on ${record.recordNumber}`);
       return stats;
     }
@@ -452,6 +459,9 @@ export async function notify(input: NotifyInput): Promise<{
       if (rule.escalationTemplateId && !escalationTemplateId) escalationTemplateId = rule.escalationTemplateId;
     }
 
+    console.log(`[notify] emailEnabled=${emailEnabled} inAppEnabled=${inAppEnabled} primaryTemplateId=${primaryTemplateId} secondaryTemplateId=${secondaryTemplateId}`);
+    console.log(`[notify] Recipient entries: ${JSON.stringify(allRecipientEntries)}`);
+
     // 4. Resolve each recipient to userId with their role context
     const resolvedRecipients = await resolveRecipients(
       allRecipientEntries.map(e => e.role),
@@ -460,8 +470,10 @@ export async function notify(input: NotifyInput): Promise<{
       triggeredBy,
     );
     stats.recipientsNotified = resolvedRecipients.length;
+    console.log(`[notify] Resolved recipients: ${resolvedRecipients.length} — ${JSON.stringify(resolvedRecipients)}`);
 
     if (resolvedRecipients.length === 0) {
+      console.log(`[notify] ✗ No recipients resolved — triggeredBy=${triggeredBy} may have been excluded (self-notification), or roles not matching record data`);
       logger.debug(`[notify] No recipients resolved for ${event} on ${record.recordNumber}`);
       return stats;
     }
@@ -536,7 +548,11 @@ export async function notify(input: NotifyInput): Promise<{
         }
       }
 
+      console.log(`[notify] Processing recipient: ${user.email} role=${resolved.role} recipientType=${recipientType} templateId=${templateId} hasTemplate=${!!template}`);
+
       // Email: render, send via nodemailer, log result
+      if (!emailEnabled) console.log(`[notify] ⚠ Email skipped for ${user.email} — emailEnabled=false on rule`);
+      if (emailEnabled && !template) console.log(`[notify] ⚠ Email skipped for ${user.email} — no template resolved (templateId=${templateId})`);
       if (emailEnabled && template) {
         const subjectTpl = Handlebars.compile(template.subject);
         const bodyTpl    = Handlebars.compile(template.html);
@@ -549,6 +565,7 @@ export async function notify(input: NotifyInput): Promise<{
         }).catch(() => null);
 
         try {
+          console.log(`[notify] Sending email to ${user.email} subject="${subject}"`);
           await sendEmail({ to: user.email, subject, html });
           if (emailLog) {
             await prisma.emailLog.update({
@@ -557,8 +574,10 @@ export async function notify(input: NotifyInput): Promise<{
             }).catch(() => null);
           }
           stats.emailsQueued++;
+          console.log(`[notify] ✓ Email SENT to ${user.email}`);
           logger.info(`[notify] Email sent to ${user.email} — ${subject}`);
         } catch (err: any) {
+          console.log(`[notify] ✗ Email FAILED to ${user.email}: ${err?.message || err}`);
           logger.error(`[notify] Failed to send email to ${user.email}:`, err?.message || err);
           if (emailLog) {
             await prisma.emailLog.update({
