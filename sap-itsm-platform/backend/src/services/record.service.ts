@@ -228,12 +228,10 @@ export async function createRecord(input: CreateRecordInput) {
     newValues:  { recordNumber, recordType: input.recordType, priority: input.priority },
   });
 
-  // Notify via notification rules (creates in-app + queues email)
-  await notify({ event: 'TICKET_CREATED', recordId: record.id, tenantId: input.tenantId, triggeredBy: input.createdById });
-
-  // Also fire ASSIGNED if an agent was set at creation time
+  // Fire notifications in background (don't block ticket creation response)
+  notify({ event: 'TICKET_CREATED', recordId: record.id, tenantId: input.tenantId, triggeredBy: input.createdById }).catch(() => null);
   if (input.assignedAgentId) {
-    await notify({ event: 'ASSIGNED', recordId: record.id, tenantId: input.tenantId, triggeredBy: input.createdById });
+    notify({ event: 'ASSIGNED', recordId: record.id, tenantId: input.tenantId, triggeredBy: input.createdById }).catch(() => null);
   }
 
   if (slaTracking) {
@@ -411,16 +409,16 @@ export async function updateRecord(
   });
 
   if (updates.status) {
-    await notify({
+    notify({
       event: 'STATUS_CHANGED', recordId: id, tenantId, triggeredBy: userId,
       payload: { oldStatus: existing.status, newStatus: updates.status },
-    });
+    }).catch(() => null);
   }
   if (updates.assignedAgentId && updates.assignedAgentId !== existing.assignedAgentId) {
-    await notify({
+    notify({
       event: 'ASSIGNED', recordId: id, tenantId, triggeredBy: userId,
       payload: { agentId: updates.assignedAgentId },
-    });
+    }).catch(() => null);
   }
 
   return updated;
@@ -450,14 +448,14 @@ export async function addComment(
     const authorRole = comment.author?.role;
     const commentEvent = (authorRole === 'AGENT' || authorRole === 'SUPER_ADMIN' || authorRole === 'PROJECT_MANAGER')
       ? 'COMMENT_AGENT' : 'COMMENT_USER';
-    await notify({
+    notify({
       event: commentEvent, recordId, tenantId, triggeredBy: authorId,
       payload: {
         commentId: comment.id,
         commentText: text,
         authorName: `${comment.author.firstName} ${comment.author.lastName}`,
       },
-    });
+    }).catch(() => null);
   }
   return comment;
 }
