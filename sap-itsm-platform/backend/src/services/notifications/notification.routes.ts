@@ -408,10 +408,17 @@ router.post('/seed',
   enforceRole('SUPER_ADMIN'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const count = await seedDefaultNotificationRules(req.user!.tenantId);
-      // Also seed email templates
-      const { seedEmailTemplates } = await import('./notification.service');
-      const tplCount = await seedEmailTemplates(req.user!.tenantId);
+      const force = req.query.force === 'true';
+      const tenantId = req.user!.tenantId;
+
+      // If force, delete existing default rules so they get recreated with correct template IDs
+      if (force) {
+        await prisma.notificationRule.deleteMany({ where: { tenantId, customerId: null } });
+      }
+
+      // Templates must be seeded FIRST so rules can reference their IDs
+      const tplCount = await seedEmailTemplates(tenantId);
+      const count = await seedDefaultNotificationRules(tenantId);
       res.json({ success: true, message: `Seeded ${count} rules and ${tplCount} email templates` });
     } catch (err) { next(err); }
   }
