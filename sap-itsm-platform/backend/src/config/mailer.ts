@@ -1,42 +1,56 @@
-import { Resend } from 'resend';
+import nodemailer, { Transporter } from 'nodemailer';
 
-let resendClient: Resend | null = null;
+let transporter: Transporter | null = null;
 
-function getResend(): Resend {
-  if (!resendClient) {
-    const apiKey = process.env.RESEND_API_KEY || '';
-    if (!apiKey) {
-      console.log('[mailer] WARNING: RESEND_API_KEY not set — emails will not be sent');
-    }
-    console.log(`[mailer] Initializing Resend client (key set: ${!!apiKey})`);
-    resendClient = new Resend(apiKey);
+function createTransporter(): Transporter {
+  const host   = process.env.SMTP_HOST     || 'smtp.gmail.com';
+  const port   = Number(process.env.SMTP_PORT) || 587;
+  const secure = process.env.SMTP_SECURE === 'true';
+  const user   = process.env.SMTP_USER     || '';
+  const pass   = process.env.SMTP_PASS     || '';
+
+  if (!user || !pass) {
+    console.log('[mailer] WARNING: SMTP_USER or SMTP_PASS not configured');
   }
-  return resendClient;
+
+  console.log(`[mailer] Creating transporter: host=${host} port=${port} secure=${secure} user=${user}`);
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass },
+    tls: { rejectUnauthorized: false },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+  });
+}
+
+export function getMailer(): Transporter {
+  if (!transporter) transporter = createTransporter();
+  return transporter;
 }
 
 export const FROM_ADDRESS =
-  `${process.env.SMTP_FROM_NAME || 'Service Desk'} <${process.env.SMTP_FROM_EMAIL || 'onboarding@resend.dev'}>`;
+  `"${process.env.SMTP_FROM_NAME || 'Service Desk'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'noreply@example.com'}>`;
 
 export async function sendEmail(options: {
   to: string;
   subject: string;
   html: string;
 }): Promise<{ messageId: string }> {
-  const client = getResend();
+  const mailer = getMailer();
   console.log(`[mailer] sendMail → to=${options.to} subject="${options.subject}"`);
   try {
-    const { data, error } = await client.emails.send({
+    const info = await mailer.sendMail({
       from: FROM_ADDRESS,
       to: options.to,
       subject: options.subject,
       html: options.html,
     });
-    if (error) {
-      console.log(`[mailer] ✗ sendMail FAILED: ${error.message}`);
-      throw new Error(error.message);
-    }
-    console.log(`[mailer] ✓ sendMail SUCCESS id=${data?.id}`);
-    return { messageId: data?.id || '' };
+    console.log(`[mailer] ✓ sendMail SUCCESS messageId=${info.messageId}`);
+    return { messageId: info.messageId };
   } catch (err: any) {
     console.log(`[mailer] ✗ sendMail FAILED: ${err?.message || err}`);
     throw err;
