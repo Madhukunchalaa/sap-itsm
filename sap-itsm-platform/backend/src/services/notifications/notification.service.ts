@@ -1,6 +1,7 @@
 import { prisma } from '../../config/database';
 import { logger } from '../../config/logger';
 import Handlebars from 'handlebars';
+import { sendEmail } from '../../config/mailer';
 
 // ── Event Types ───────────────────────────────────────────────
 export const NOTIFICATION_EVENTS = [
@@ -535,27 +536,36 @@ export async function notify(input: NotifyInput): Promise<{
         }
       }
 
-      // Email: generate and queue (QUEUED status — not sent yet)
+      // Email: render, send via nodemailer, log result
       if (emailEnabled && template) {
-        try {
-          const subjectTpl = Handlebars.compile(template.subject);
-          const bodyTpl = Handlebars.compile(template.html);
-          const subject = subjectTpl(recipientVars);
-          const html = bodyTpl(recipientVars);
+        const subjectTpl = Handlebars.compile(template.subject);
+        const bodyTpl    = Handlebars.compile(template.html);
+        const subject    = subjectTpl(recipientVars);
+        const html       = bodyTpl(recipientVars);
 
-          await prisma.emailLog.create({
-            data: {
-              recordId,
-              templateKey,
-              subject,
-              recipient: user.email,
-              body: html,
-              status: 'QUEUED',
-            },
-          });
+        // Create log entry first (QUEUED), then attempt send
+        const emailLog = await prisma.emailLog.create({
+          data: { recordId, templateKey, subject, recipient: user.email, body: html, status: 'QUEUED' },
+        }).catch(() => null);
+
+        try {
+          await sendEmail({ to: user.email, subject, html });
+          if (emailLog) {
+            await prisma.emailLog.update({
+              where: { id: emailLog.id },
+              data: { status: 'SENT', sentAt: new Date() },
+            }).catch(() => null);
+          }
           stats.emailsQueued++;
-        } catch (err) {
-          logger.error(`[notify] Failed to queue email for ${user.email}:`, err);
+          logger.info(`[notify] Email sent to ${user.email} — ${subject}`);
+        } catch (err: any) {
+          logger.error(`[notify] Failed to send email to ${user.email}:`, err?.message || err);
+          if (emailLog) {
+            await prisma.emailLog.update({
+              where: { id: emailLog.id },
+              data: { status: 'FAILED', error: err?.message?.slice(0, 500) || 'Send failed' },
+            }).catch(() => null);
+          }
         }
       }
     }
