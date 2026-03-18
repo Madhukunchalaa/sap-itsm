@@ -57,6 +57,14 @@ export const recordsApi = {
 
   getHistory: (id: string) => apiClient.get(`/records/${id}/history`),
   delete: (id: string) => apiClient.delete(`/records/${id}`),
+
+  uploadAttachment: (id: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return apiClient.post(`/records/${id}/attachments`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
+  getAttachments: (id: string) => apiClient.get(`/records/${id}/attachments`),
+  deleteAttachment: (id: string, key: string) => apiClient.delete(`/records/${id}/attachments/${key}`),
 };
 
 // ── Agents API ────────────────────────────────────────────────

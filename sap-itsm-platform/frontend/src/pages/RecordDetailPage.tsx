@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MessageSquare, Timer, Paperclip, Save, X, Send, Lock, Edit2, History, Trash2 } from 'lucide-react';
+import { ArrowLeft, MessageSquare, Timer, Paperclip, Save, X, Send, Lock, Edit2, History, Trash2, Upload, Download } from 'lucide-react';
 import { useRecord, useUpdateRecord, useAddComment, useAddTimeEntry, useAgents, useDeleteRecord } from '../hooks/useApi';
 import { auditApi, recordsApi } from '../api/services';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
@@ -58,6 +58,21 @@ export default function RecordDetailPage() {
   const [editedDescription, setEditedDescription] = useState('');
   const [editedAgentId, setEditedAgentId] = useState('');
   const [saving, setSaving] = useState(false);
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [attachmentsLoaded, setAttachmentsLoaded] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const loadAttachments = async () => {
+    if (attachmentsLoaded) return;
+    try {
+      const res = await recordsApi.getAttachments(id!);
+      setAttachments(res.data.attachments || []);
+      setAttachmentsLoaded(true);
+    } catch {}
+  };
+
+  React.useEffect(() => { if (record) loadAttachments(); }, [record?.id]);
 
   if (isLoading) return <LoadingSpinner fullscreen label="Loading ticket…"/>;
   if (!record) return <div className="p-8 text-center text-gray-400">Ticket not found.</div>;
@@ -180,22 +195,61 @@ export default function RecordDetailPage() {
             </div>
           </Card>
 
-          {attachmentNames.length > 0 && (
-            <Card>
-              <div className="p-4">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                  <Paperclip className="w-4 h-4"/> Attachments ({attachmentNames.length})
+          <Card>
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <Paperclip className="w-4 h-4"/> Attachments ({attachments.length})
                 </h3>
-                <div className="space-y-2">
-                  {attachmentNames.map((name,i) => (
-                    <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg text-sm text-gray-600">
-                      <Paperclip className="w-3.5 h-3.5 text-gray-400"/>{name}
-                    </div>
-                  ))}
-                </div>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-50"
+                >
+                  <Upload className="w-3.5 h-3.5"/> {uploading ? 'Uploading…' : 'Upload'}
+                </button>
+                <input ref={fileInputRef} type="file" className="hidden" multiple
+                  onChange={async (e) => {
+                    const files = Array.from(e.target.files || []);
+                    if (!files.length) return;
+                    setUploading(true);
+                    try {
+                      for (const file of files) {
+                        const res = await recordsApi.uploadAttachment(record.id, file);
+                        const att = res.data.attachment;
+                        const urlRes = await recordsApi.getAttachments(record.id);
+                        setAttachments(urlRes.data.attachments || []);
+                      }
+                    } finally { setUploading(false); e.target.value = ''; }
+                  }}
+                />
               </div>
-            </Card>
-          )}
+              {attachments.length === 0
+                ? <p className="text-sm text-gray-400 text-center py-3">No attachments yet.</p>
+                : <div className="space-y-2">
+                    {attachments.map((a: any) => (
+                      <div key={a.key} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg text-sm text-gray-600">
+                        <Paperclip className="w-3.5 h-3.5 text-gray-400 flex-shrink-0"/>
+                        <span className="flex-1 truncate">{a.name}</span>
+                        <span className="text-xs text-gray-400">{(a.size/1024).toFixed(0)}KB</span>
+                        <a href={a.url} target="_blank" rel="noreferrer"
+                          className="text-blue-500 hover:text-blue-700 flex-shrink-0">
+                          <Download className="w-4 h-4"/>
+                        </a>
+                        {canEdit && (
+                          <button onClick={async () => {
+                            await recordsApi.deleteAttachment(record.id, a.key);
+                            setAttachments(prev => prev.filter(x => x.key !== a.key));
+                          }} className="text-red-400 hover:text-red-600 flex-shrink-0">
+                            <X className="w-4 h-4"/>
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+              }
+            </div>
+          </Card>
 
           {sla && (
             <Card title="SLA Status">

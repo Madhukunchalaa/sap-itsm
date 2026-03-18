@@ -11,6 +11,12 @@ import {
 import { prisma } from '../../config/database';
 import { resolveAgent, resolveManagedCustomerIds } from './scopeHelpers';
 import { buildPaginatedResult } from '../../utils/pagination';
+import multer from 'multer';
+import { uploadToR2, getSignedDownloadUrl, deleteFromR2 } from '../../config/r2';
+import path from 'path';
+import crypto from 'crypto';
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const router = Router();
 router.use(verifyJWT, enforceTenantScope);
@@ -242,6 +248,70 @@ router.get('/:id/history',
         include: { user: { select: { firstName: true, lastName: true, email: true } } },
       });
       res.json({ success: true, history });
+    } catch (err) { next(err); }
+  }
+);
+
+// ─────────────────────────────────────────────────────────────
+// POST /records/:id/attachments — upload file to R2
+// ─────────────────────────────────────────────────────────────
+router.post('/:id/attachments',
+  upload.single('file'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.file) { res.status(400).json({ success: false, error: 'No file provided' }); return; }
+      const record = await prisma.iTSMRecord.findFirst({ where: { id: req.params.id, tenantId: req.user!.tenantId } });
+      if (!record) { res.status(404).json({ success: false, error: 'Record not found' }); return; }
+
+      const ext = path.extname(req.file.originalname);
+      const key = `${req.user!.tenantId}/${req.params.id}/${crypto.randomUUID()}${ext}`;
+      await uploadToR2(key, req.file.buffer, req.file.mimetype);
+
+      // Save attachment metadata to record metadata
+      const existing = (record.metadata as any) || {};
+      const attachments = existing.attachments || [];
+      attachments.push({ key, name: req.file.originalname, size: req.file.size, uploadedAt: new Date().toISOString() });
+      await prisma.iTSMRecord.update({ where: { id: record.id }, data: { metadata: { ...existing, attachments } } });
+
+      res.status(201).json({ success: true, attachment: { key, name: req.file.originalname, size: req.file.size } });
+    } catch (err) { next(err); }
+  }
+);
+
+// ─────────────────────────────────────────────────────────────
+// GET /records/:id/attachments — list attachments with signed URLs
+// ─────────────────────────────────────────────────────────────
+router.get('/:id/attachments', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const record = await prisma.iTSMRecord.findFirst({ where: { id: req.params.id, tenantId: req.user!.tenantId } });
+    if (!record) { res.status(404).json({ success: false, error: 'Record not found' }); return; }
+
+    const attachments = ((record.metadata as any)?.attachments || []) as any[];
+    const withUrls = await Promise.all(attachments.map(async (a: any) => ({
+      ...a,
+      url: await getSignedDownloadUrl(a.key, 3600),
+    })));
+
+    res.json({ success: true, attachments: withUrls });
+  } catch (err) { next(err); }
+});
+
+// ─────────────────────────────────────────────────────────────
+// DELETE /records/:id/attachments/:key — delete attachment
+// ─────────────────────────────────────────────────────────────
+router.delete('/:id/attachments/:key(*)',
+  enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENT', 'PROJECT_MANAGER'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const record = await prisma.iTSMRecord.findFirst({ where: { id: req.params.id, tenantId: req.user!.tenantId } });
+      if (!record) { res.status(404).json({ success: false, error: 'Record not found' }); return; }
+
+      const existing = (record.metadata as any) || {};
+      const attachments = (existing.attachments || []).filter((a: any) => a.key !== req.params.key);
+      await prisma.iTSMRecord.update({ where: { id: record.id }, data: { metadata: { ...existing, attachments } } });
+      await deleteFromR2(req.params.key).catch(() => null);
+
+      res.json({ success: true });
     } catch (err) { next(err); }
   }
 );
