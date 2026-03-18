@@ -358,7 +358,7 @@ async function main() {
 
   // ── Contract ──────────────────────────────────────────────
   const existingContract = await prisma.contract.findFirst({
-    where: { customerId: customer.id, contractNumber: CONFIG.contract.contractNumber },
+    where: { contractNumber: CONFIG.contract.contractNumber },
   });
   if (!existingContract) {
     await prisma.contract.create({

@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCreateRecord, useCustomers } from '../hooks/useApi';
 import { Input, Select, Textarea, Button, PageHeader, Card } from '../components/ui/Forms';
 import { useAuthStore } from '../store/auth.store';
-import { agentsApi, sapModulesApi } from '../api/services';
+import { agentsApi, sapModulesApi, recordsApi } from '../api/services';
 
 const TYPE_OPTIONS = [
   { value: 'INCIDENT', label: '🔴 Incident — Something is broken' },
@@ -99,8 +99,10 @@ export default function NewRecordPage() {
       sapModuleId:     form.sapModuleId     || undefined,
       sapSubModuleId:  form.sapSubModuleId  || undefined,
       tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
-      metadata: attachments.length > 0 ? { attachmentNames: attachments.map(f => f.name) } : undefined,
     });
+    for (const file of attachments) {
+      await recordsApi.uploadAttachment(record.id, file);
+    }
     navigate(`/records/${record.id}`);
   };
 
