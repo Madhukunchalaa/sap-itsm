@@ -27,6 +27,7 @@ const STATUS_MAP: Record<string, { label: string; classes: string }> = {
   RESOLVED:          { label: 'Resolved',          classes: 'bg-green-100 text-green-800' },
   CLOSED:            { label: 'Closed',            classes: 'bg-gray-100 text-gray-600' },
   CANCELLED:         { label: 'Cancelled',         classes: 'bg-red-50 text-red-500' },
+  REOPEN:            { label: 'Reopened',          classes: 'bg-indigo-200 text-indigo-900 border border-indigo-300' },
 };
 
 export function StatusBadge({ status }: { status: string }) {

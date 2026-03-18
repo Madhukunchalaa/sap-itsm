@@ -780,6 +780,7 @@ enum RecordStatus {
   RESOLVED
   CLOSED
   CANCELLED
+  REOPEN
 }
 
 enum TimeEntryStatus {
