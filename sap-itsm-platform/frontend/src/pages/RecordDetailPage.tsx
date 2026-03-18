@@ -5,7 +5,7 @@ import { useRecord, useUpdateRecord, useAddComment, useAddTimeEntry, useAgents, 
 import { auditApi, recordsApi } from '../api/services';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { PriorityBadge, StatusBadge, TypeBadge } from '../components/ui/Badges';
-import { Button, Card } from '../components/ui/Forms';
+import { Button, Card, Textarea } from '../components/ui/Forms';
 import { Modal } from '../components/ui/Modal';
 import { useAuthStore } from '../store/auth.store';
 import { formatDistanceToNow, format } from 'date-fns';
