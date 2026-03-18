@@ -5,19 +5,24 @@ import { useRecord, useUpdateRecord, useAddComment, useAddTimeEntry, useAgents, 
 import { auditApi, recordsApi } from '../api/services';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { PriorityBadge, StatusBadge, TypeBadge } from '../components/ui/Badges';
-import { Button, Card, Textarea } from '../components/ui/Forms';
+import { Button, Card } from '../components/ui/Forms';
 import { Modal } from '../components/ui/Modal';
 import { useAuthStore } from '../store/auth.store';
 import { formatDistanceToNow, format } from 'date-fns';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 
 const STATUS_TRANSITIONS: Record<string, string[]> = {
-  NEW:         ['OPEN','IN_PROGRESS','CANCELLED'],
-  OPEN:        ['IN_PROGRESS','PENDING','RESOLVED','CANCELLED'],
-  IN_PROGRESS: ['PENDING','RESOLVED','CLOSED'],
-  PENDING:     ['IN_PROGRESS','RESOLVED','CLOSED'],
-  RESOLVED:    ['CLOSED','IN_PROGRESS'],
-  CLOSED:      [], CANCELLED: [],
+  NEW:               ['OPEN','IN_PROGRESS','AWAITING_CUSTOMER','CANCELLED'],
+  OPEN:              ['IN_PROGRESS','PENDING','AWAITING_CUSTOMER','RESOLVED','CANCELLED'],
+  IN_PROGRESS:       ['PENDING','AWAITING_CUSTOMER','RESOLVED','CLOSED'],
+  PENDING:           ['IN_PROGRESS','AWAITING_CUSTOMER','RESOLVED','CLOSED'],
+  AWAITING_CUSTOMER: ['IN_PROGRESS','OPEN','RESOLVED','CLOSED'],
+  RESOLVED:          ['CLOSED','IN_PROGRESS'],
+  CLOSED:            [], CANCELLED: [],
 };
+
+const SUPER_ADMIN_ALL_STATUSES = ['NEW','OPEN','IN_PROGRESS','PENDING','AWAITING_CUSTOMER','RESOLVED','CLOSED','CANCELLED'];
 
 const PRIORITY_COLORS: Record<string,string> = {
   P1:'border-l-red-500', P2:'border-l-orange-500',
@@ -91,7 +96,8 @@ export default function RecordDetailPage() {
   };
 
   const handleComment = async () => {
-    if (!commentText.trim()) return;
+    const stripped = commentText.replace(/<[^>]*>/g, '').trim();
+    if (!stripped) return;
     await addComment.mutateAsync({ recordId: record.id, text: commentText, internalFlag });
     setCommentText(''); setInternal(false);
   };
@@ -237,14 +243,28 @@ export default function RecordDetailPage() {
                         )}
                         <span className="text-xs text-gray-400 ml-auto">{formatDistanceToNow(new Date(c.createdAt),{addSuffix:true})}</span>
                       </div>
-                      <div className={`text-sm text-gray-700 bg-gray-50 rounded-xl px-4 py-3 ${c.internalFlag?'border border-amber-200':''}`}>
-                        {c.text}
-                      </div>
+                      <div className={`text-sm text-gray-700 bg-gray-50 rounded-xl px-4 py-3 ${c.internalFlag?'border border-amber-200':''} prose prose-sm max-w-none`}
+                        dangerouslySetInnerHTML={{ __html: c.text }}
+                      />
                     </div>
                   </div>
                 ))}
                 <div className="border-t border-gray-100 pt-4">
-                  <Textarea value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="Add a comment…" rows={3}/>
+                  <ReactQuill
+                    value={commentText}
+                    onChange={setCommentText}
+                    placeholder="Add a comment…"
+                    modules={{
+                      toolbar: [
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ list: 'ordered' }, { list: 'bullet' }],
+                        ['link', 'blockquote', 'code-block'],
+                        ['clean'],
+                      ],
+                    }}
+                    className="rounded-lg"
+                    style={{ minHeight: '120px' }}
+                  />
                   <div className="flex items-center justify-between mt-2">
                     {isAgent && (
                       <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
@@ -252,7 +272,7 @@ export default function RecordDetailPage() {
                         Internal note (not visible to customer)
                       </label>
                     )}
-                    <Button onClick={handleComment} loading={addComment.isPending} disabled={!commentText.trim()} size="sm" className="ml-auto">
+                    <Button onClick={handleComment} loading={addComment.isPending} disabled={!commentText.replace(/<[^>]*>/g,'').trim()} size="sm" className="ml-auto">
                       <Send className="w-3.5 h-3.5"/> Post
                     </Button>
                   </div>
@@ -370,7 +390,10 @@ export default function RecordDetailPage() {
                   {editMode
                     ? <select value={editedStatus} onChange={e=>setEditedStatus(e.target.value)}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                        {[record.status,...(STATUS_TRANSITIONS[record.status]||[])].map(s=>(
+                        {(user?.role === 'SUPER_ADMIN'
+                          ? SUPER_ADMIN_ALL_STATUSES
+                          : [record.status,...(STATUS_TRANSITIONS[record.status]||[])]
+                        ).map(s=>(
                           <option key={s} value={s}>{s.replace(/_/g,' ')}</option>
                         ))}
                       </select>

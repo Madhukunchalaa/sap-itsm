@@ -19,13 +19,14 @@ export function PriorityBadge({ priority, short }: { priority: string; short?: b
 
 // ── Status Badge ──────────────────────────────────────────────
 const STATUS_MAP: Record<string, { label: string; classes: string }> = {
-  NEW:         { label: 'New',         classes: 'bg-blue-100 text-blue-800' },
-  OPEN:        { label: 'Open',        classes: 'bg-indigo-100 text-indigo-800' },
-  IN_PROGRESS: { label: 'In Progress', classes: 'bg-purple-100 text-purple-800' },
-  PENDING:     { label: 'Pending',     classes: 'bg-yellow-100 text-yellow-800' },
-  RESOLVED:    { label: 'Resolved',    classes: 'bg-green-100 text-green-800' },
-  CLOSED:      { label: 'Closed',      classes: 'bg-gray-100 text-gray-600' },
-  CANCELLED:   { label: 'Cancelled',   classes: 'bg-red-50 text-red-500' },
+  NEW:               { label: 'New',               classes: 'bg-blue-100 text-blue-800' },
+  OPEN:              { label: 'Open',              classes: 'bg-indigo-100 text-indigo-800' },
+  IN_PROGRESS:       { label: 'In Progress',       classes: 'bg-purple-100 text-purple-800' },
+  PENDING:           { label: 'Pending',           classes: 'bg-yellow-100 text-yellow-800' },
+  AWAITING_CUSTOMER: { label: 'Awaiting Customer', classes: 'bg-orange-100 text-orange-800' },
+  RESOLVED:          { label: 'Resolved',          classes: 'bg-green-100 text-green-800' },
+  CLOSED:            { label: 'Closed',            classes: 'bg-gray-100 text-gray-600' },
+  CANCELLED:         { label: 'Cancelled',         classes: 'bg-red-50 text-red-500' },
 };
 
 export function StatusBadge({ status }: { status: string }) {
