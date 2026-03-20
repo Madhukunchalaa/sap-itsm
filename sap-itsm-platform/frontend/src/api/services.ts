@@ -27,13 +27,12 @@ export const authApi = {
 export interface RecordFilters {
   page?: number;
   limit?: number;
-  recordType?: string;
-  status?: string;
-  statusIn?: string[];
-  priority?: string;
+  recordType?: string | string[];
+  status?: string | string[];
+  priority?: string | string[];
   assignedAgentId?: string;
   customerId?: string;
-  sapModuleId?: string;
+  sapModuleId?: string | string[];
   search?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';

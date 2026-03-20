@@ -33,14 +33,17 @@ export interface ListRecordsInput {
   page: number;
   limit: number;
   recordType?: RecordType;
+  recordTypeIn?: RecordType[];
   status?: RecordStatus;
   statusIn?: RecordStatus[];   // multi-status filter
   priority?: Priority;
+  priorityIn?: Priority[];
   assignedAgentId?: string;
   customerId?: string;
   customerIdIn?: string[];  // PROJECT_MANAGER role: scope to managed company IDs
   createdById?: string;     // USER role: scope to own tickets only
   sapModuleId?: string;     // filter by SAP module
+  sapModuleIdIn?: string[];
   search?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
@@ -248,15 +251,18 @@ export async function listRecords(input: ListRecordsInput) {
 
   const where: Prisma.ITSMRecordWhereInput = {
     tenantId: input.tenantId,
-    ...(input.recordType      && { recordType:      input.recordType }),
-    ...(input.status          && { status:          input.status }),
-    ...(input.statusIn?.length && { status:          { in: input.statusIn } }),
-    ...(input.priority        && { priority:        input.priority }),
-    ...(input.assignedAgentId && { assignedAgentId: input.assignedAgentId }),
-    ...(input.customerId      && { customerId:      input.customerId }),
-    ...(input.customerIdIn    && { customerId:      { in: input.customerIdIn } }),
-    ...(input.createdById     && { createdById:     input.createdById }),
-    ...(input.sapModuleId     && { sapModuleId:     input.sapModuleId }),
+    ...(input.recordType       && { recordType: input.recordType }),
+    ...(input.recordTypeIn?.length && { recordType: { in: input.recordTypeIn } }),
+    ...(input.status           && { status: input.status }),
+    ...(input.statusIn?.length && { status: { in: input.statusIn } }),
+    ...(input.priority         && { priority: input.priority }),
+    ...(input.priorityIn?.length && { priority: { in: input.priorityIn } }),
+    ...(input.assignedAgentId  && { assignedAgentId: input.assignedAgentId }),
+    ...(input.customerId       && { customerId: input.customerId }),
+    ...(input.customerIdIn     && { customerId: { in: input.customerIdIn } }),
+    ...(input.createdById      && { createdById: input.createdById }),
+    ...(input.sapModuleId      && { sapModuleId: input.sapModuleId }),
+    ...(input.sapModuleIdIn?.length && { sapModuleId: { in: input.sapModuleIdIn } }),
     ...(input.search && {
       OR: [
         { title:        { contains: input.search, mode: 'insensitive' } },

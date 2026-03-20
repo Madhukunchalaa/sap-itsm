@@ -5,85 +5,116 @@ import { useRecords, useSapModules } from '../hooks/useApi';
 import { DataTable, Column } from '../components/ui/DataTable';
 import { PriorityBadge, StatusBadge, TypeBadge, SLABadge } from '../components/ui/Badges';
 import { PageHeader, Button } from '../components/ui/Forms';
+import { MultiSelectDropdown, MultiSelectOption } from '../components/ui/MultiSelectDropdown';
 import { formatDistanceToNow } from 'date-fns';
 import { RecordFilters } from '../api/services';
 import { useAuthStore } from '../store/auth.store';
 
-const ALL_STATUSES = ['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'AWAITING_CUSTOMER', 'RESOLVED', 'CLOSED', 'CANCELLED'];
-const PRIORITY_OPTIONS = ['', 'P1', 'P2', 'P3', 'P4'];
-const TYPE_OPTIONS = ['', 'INCIDENT', 'REQUEST', 'PROBLEM', 'CHANGE'];
+// ── Static filter options ────────────────────────────────────
+const STATUS_OPTIONS: MultiSelectOption[] = [
+  { value: 'NEW',               label: 'New' },
+  { value: 'OPEN',              label: 'Open' },
+  { value: 'IN_PROGRESS',       label: 'In Progress' },
+  { value: 'PENDING',           label: 'Pending' },
+  { value: 'AWAITING_CUSTOMER', label: 'Awaiting Customer' },
+  { value: 'RESOLVED',          label: 'Resolved' },
+  { value: 'CLOSED',            label: 'Closed' },
+  { value: 'CANCELLED',         label: 'Cancelled' },
+];
 
 const STATUS_COLORS: Record<string, string> = {
-  NEW:               'bg-slate-100 text-slate-700 border-slate-300',
-  OPEN:              'bg-blue-100 text-blue-700 border-blue-300',
-  IN_PROGRESS:       'bg-indigo-100 text-indigo-700 border-indigo-300',
-  PENDING:           'bg-amber-100 text-amber-700 border-amber-300',
-  AWAITING_CUSTOMER: 'bg-orange-100 text-orange-700 border-orange-300',
-  RESOLVED:          'bg-green-100 text-green-700 border-green-300',
-  CLOSED:            'bg-gray-200 text-gray-600 border-gray-300',
-  CANCELLED:         'bg-red-100 text-red-600 border-red-300',
+  NEW:               'bg-slate-600 border-slate-600',
+  OPEN:              'bg-blue-600 border-blue-600',
+  IN_PROGRESS:       'bg-indigo-600 border-indigo-600',
+  PENDING:           'bg-amber-500 border-amber-500',
+  AWAITING_CUSTOMER: 'bg-orange-500 border-orange-500',
+  RESOLVED:          'bg-green-600 border-green-600',
+  CLOSED:            'bg-gray-500 border-gray-500',
+  CANCELLED:         'bg-red-500 border-red-500',
 };
 
-const STATUS_ACTIVE: Record<string, string> = {
-  NEW:               'bg-slate-600 text-white border-slate-600',
-  OPEN:              'bg-blue-600 text-white border-blue-600',
-  IN_PROGRESS:       'bg-indigo-600 text-white border-indigo-600',
-  PENDING:           'bg-amber-500 text-white border-amber-500',
-  AWAITING_CUSTOMER: 'bg-orange-500 text-white border-orange-500',
-  RESOLVED:          'bg-green-600 text-white border-green-600',
-  CLOSED:            'bg-gray-500 text-white border-gray-500',
-  CANCELLED:         'bg-red-500 text-white border-red-500',
+const TYPE_OPTIONS: MultiSelectOption[] = [
+  { value: 'INCIDENT', label: 'Incident' },
+  { value: 'REQUEST',  label: 'Request' },
+  { value: 'PROBLEM',  label: 'Problem' },
+  { value: 'CHANGE',   label: 'Change' },
+];
+
+const PRIORITY_OPTIONS: MultiSelectOption[] = [
+  { value: 'P1', label: 'P1 – Critical' },
+  { value: 'P2', label: 'P2 – High' },
+  { value: 'P3', label: 'P3 – Medium' },
+  { value: 'P4', label: 'P4 – Low' },
+];
+
+const PRIORITY_COLORS: Record<string, string> = {
+  P1: 'bg-red-600 border-red-600',
+  P2: 'bg-orange-500 border-orange-500',
+  P3: 'bg-yellow-500 border-yellow-500',
+  P4: 'bg-green-500 border-green-500',
 };
 
-function statusLabel(s: string) {
-  return s.replace(/_/g, ' ');
-}
+const SORT_OPTIONS = [
+  { value: 'createdAt_desc', label: 'Newest First' },
+  { value: 'createdAt_asc',  label: 'Oldest First' },
+  { value: 'priority_asc',   label: 'Priority (High First)' },
+  { value: 'updatedAt_desc', label: 'Recently Updated' },
+];
 
+// ── Component ────────────────────────────────────────────────
 export default function RecordsPage() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const canSeeModuleColumn = user?.role === 'SUPER_ADMIN' || user?.role === 'PROJECT_MANAGER';
 
-  const { data: sapModules = [] } = useSapModules();
+  const { data: sapModulesRaw = [] } = useSapModules();
+  const moduleOptions: MultiSelectOption[] = sapModulesRaw.map((m: any) => ({
+    value: m.id,
+    label: `${m.code} – ${m.name}`,
+  }));
 
+  // Base pagination / sort filters (non-multi)
   const [filters, setFilters] = useState<RecordFilters>({
     page: 1, limit: 20, sortBy: 'createdAt', sortOrder: 'desc',
   });
-  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+
+  // Multi-select state
+  const [selStatus,   setSelStatus]   = useState<string[]>([]);
+  const [selType,     setSelType]     = useState<string[]>([]);
+  const [selPriority, setSelPriority] = useState<string[]>([]);
+  const [selModule,   setSelModule]   = useState<string[]>([]);
+
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
   const { data, isLoading } = useRecords({
     ...filters,
-    status: selectedStatuses.length ? (selectedStatuses as any) : undefined,
+    status:     selStatus.length     ? (selStatus as any)   : undefined,
+    recordType: selType.length       ? (selType as any)     : undefined,
+    priority:   selPriority.length   ? (selPriority as any) : undefined,
+    sapModuleId: selModule.length    ? (selModule as any)   : undefined,
     search: search || undefined,
   });
 
-  const setFilter = (key: keyof RecordFilters, value: string | number | undefined) => {
-    setFilters((f) => ({ ...f, [key]: value || undefined, page: 1 }));
-  };
-
-  const toggleStatus = (s: string) => {
-    setSelectedStatuses((prev) =>
-      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
-    );
-    setFilters((f) => ({ ...f, page: 1 }));
-  };
-
   const clearFilters = () => {
     setFilters({ page: 1, limit: 20, sortBy: 'createdAt', sortOrder: 'desc' });
-    setSelectedStatuses([]);
+    setSelStatus([]);
+    setSelType([]);
+    setSelPriority([]);
+    setSelModule([]);
     setSearch('');
   };
 
   const activeFilterCount =
-    [filters.recordType, filters.priority, filters.sapModuleId].filter(Boolean).length +
-    (selectedStatuses.length > 0 ? 1 : 0);
+    (selStatus.length   > 0 ? 1 : 0) +
+    (selType.length     > 0 ? 1 : 0) +
+    (selPriority.length > 0 ? 1 : 0) +
+    (selModule.length   > 0 ? 1 : 0);
 
   const handleExportCSV = () => {
     const records = data?.data || [];
     if (records.length === 0) return;
-    const headers = ['Record #', 'Type', 'Title', 'Priority', 'Status', 'Customer', 'Assigned Agent', 'Created By', 'SAP Module', 'Created', 'Updated'];
+    const headers = ['Record #','Type','Title','Priority','Status','Customer','Assigned Agent','Created By','SAP Module','Created','Updated'];
     const rows = records.map((r: any) => [
       r.recordNumber, r.recordType, `"${(r.title || '').replace(/"/g, '""')}"`,
       r.priority, r.status,
@@ -102,6 +133,7 @@ export default function RecordsPage() {
     a.click(); URL.revokeObjectURL(url);
   };
 
+  // ── Columns ─────────────────────────────────────────────────
   const baseColumns: Column<any>[] = [
     {
       key: 'recordNumber',
@@ -191,6 +223,9 @@ export default function RecordsPage() {
     ? [...baseColumns, moduleColumn, ...tailColumns]
     : [...baseColumns, ...tailColumns];
 
+  // ── Sort helper ──────────────────────────────────────────────
+  const sortValue = `${filters.sortBy}_${filters.sortOrder}`;
+
   return (
     <div className="p-6 space-y-5 max-w-screen-2xl mx-auto">
       <PageHeader
@@ -237,7 +272,9 @@ export default function RecordsPage() {
             }`}
           >
             <Filter className="w-4 h-4" />
-            Filters {activeFilterCount > 0 && <span className="bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">{activeFilterCount}</span>}
+            Filters {activeFilterCount > 0 && (
+              <span className="bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">{activeFilterCount}</span>
+            )}
           </button>
           {activeFilterCount > 0 && (
             <button onClick={clearFilters} className="px-3 py-2.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50">
@@ -249,92 +286,80 @@ export default function RecordsPage() {
 
       {/* Filter panel */}
       {showFilters && (
-        <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-4">
-
-          {/* Status multi-select pills */}
+        <div className={`grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200 ${canSeeModuleColumn ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
+          {/* Status */}
           <div>
-            <label className="text-xs font-medium text-gray-500 mb-2 block">
+            <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
               Status
-              {selectedStatuses.length > 0 && (
-                <button
-                  onClick={() => setSelectedStatuses([])}
-                  className="ml-2 text-blue-600 hover:text-blue-800 font-normal"
-                >
-                  clear
-                </button>
-              )}
+              {selStatus.length > 0 && <span className="text-blue-600 font-semibold">{selStatus.length}</span>}
             </label>
-            <div className="flex flex-wrap gap-2">
-              {ALL_STATUSES.map((s) => {
-                const active = selectedStatuses.includes(s);
-                return (
-                  <button
-                    key={s}
-                    onClick={() => toggleStatus(s)}
-                    className={`text-xs px-3 py-1 rounded-full border font-medium transition-all ${
-                      active ? STATUS_ACTIVE[s] : STATUS_COLORS[s] + ' hover:opacity-80'
-                    }`}
-                  >
-                    {statusLabel(s)}
-                  </button>
-                );
-              })}
-            </div>
+            <MultiSelectDropdown
+              options={STATUS_OPTIONS}
+              selected={selStatus}
+              onChange={(v) => { setSelStatus(v); setFilters((f) => ({ ...f, page: 1 })); }}
+              placeholder="All Statuses"
+              colorMap={STATUS_COLORS}
+            />
           </div>
 
-          {/* Other filters row */}
-          <div className={`grid grid-cols-2 gap-3 ${canSeeModuleColumn ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
+          {/* Type */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
+              Type
+              {selType.length > 0 && <span className="text-blue-600 font-semibold">{selType.length}</span>}
+            </label>
+            <MultiSelectDropdown
+              options={TYPE_OPTIONS}
+              selected={selType}
+              onChange={(v) => { setSelType(v); setFilters((f) => ({ ...f, page: 1 })); }}
+              placeholder="All Types"
+            />
+          </div>
+
+          {/* Priority */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
+              Priority
+              {selPriority.length > 0 && <span className="text-blue-600 font-semibold">{selPriority.length}</span>}
+            </label>
+            <MultiSelectDropdown
+              options={PRIORITY_OPTIONS}
+              selected={selPriority}
+              onChange={(v) => { setSelPriority(v); setFilters((f) => ({ ...f, page: 1 })); }}
+              placeholder="All Priorities"
+              colorMap={PRIORITY_COLORS}
+            />
+          </div>
+
+          {/* Module (admin/PM only) */}
+          {canSeeModuleColumn && (
             <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">Type</label>
-              <select
-                value={filters.recordType || ''}
-                onChange={(e) => setFilter('recordType', e.target.value)}
-                className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                {TYPE_OPTIONS.map((o) => <option key={o} value={o}>{o || 'All Types'}</option>)}
-              </select>
+              <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
+                Module
+                {selModule.length > 0 && <span className="text-blue-600 font-semibold">{selModule.length}</span>}
+              </label>
+              <MultiSelectDropdown
+                options={moduleOptions}
+                selected={selModule}
+                onChange={(v) => { setSelModule(v); setFilters((f) => ({ ...f, page: 1 })); }}
+                placeholder="All Modules"
+              />
             </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">Priority</label>
-              <select
-                value={filters.priority || ''}
-                onChange={(e) => setFilter('priority', e.target.value)}
-                className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                {PRIORITY_OPTIONS.map((o) => <option key={o} value={o}>{o || 'All Priorities'}</option>)}
-              </select>
-            </div>
-            {canSeeModuleColumn && (
-              <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">Module</label>
-                <select
-                  value={filters.sapModuleId || ''}
-                  onChange={(e) => setFilter('sapModuleId', e.target.value)}
-                  className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                >
-                  <option value="">All Modules</option>
-                  {sapModules.map((m) => (
-                    <option key={m.id} value={m.id}>{m.code} – {m.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">Sort By</label>
-              <select
-                value={`${filters.sortBy}_${filters.sortOrder}`}
-                onChange={(e) => {
-                  const [by, order] = e.target.value.split('_');
-                  setFilters((f) => ({ ...f, sortBy: by, sortOrder: order as any, page: 1 }));
-                }}
-                className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="createdAt_desc">Newest First</option>
-                <option value="createdAt_asc">Oldest First</option>
-                <option value="priority_asc">Priority (High First)</option>
-                <option value="updatedAt_desc">Recently Updated</option>
-              </select>
-            </div>
+          )}
+
+          {/* Sort */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1.5 block">Sort By</label>
+            <select
+              value={sortValue}
+              onChange={(e) => {
+                const [by, order] = e.target.value.split('_');
+                setFilters((f) => ({ ...f, sortBy: by, sortOrder: order as any, page: 1 }));
+              }}
+              className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
           </div>
         </div>
       )}

@@ -70,23 +70,27 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
       // SUPER_ADMIN: no extra filters
     }
 
-    const rawStatus = q.status;
-    const statusIn: string[] = rawStatus
-      ? (Array.isArray(rawStatus) ? rawStatus : [rawStatus])
-      : [];
+    // Helper: normalise a query field that can be a single string or an array
+    const toArray = (v: any): string[] =>
+      !v ? [] : Array.isArray(v) ? v : [v];
+
+    const statusIn    = toArray(q.status);
+    const recordTypeIn = toArray(q.recordType);
+    const priorityIn  = toArray(q.priority);
+    const sapModuleIdIn = toArray(q.sapModuleId);
 
     const result = await listRecords({
       tenantId:        req.user!.tenantId,
       page:            Number(q.page) || 1,
       limit:           Number(q.limit) || 20,
-      recordType:      q.recordType,
+      recordTypeIn:    recordTypeIn.length ? (recordTypeIn as any) : undefined,
       statusIn:        statusIn.length ? (statusIn as any) : undefined,
-      priority:        q.priority,
+      priorityIn:      priorityIn.length ? (priorityIn as any) : undefined,
       customerId:      customerIdIn ? undefined : customerId,
       customerIdIn:    customerIdIn,
       createdById:     createdById,
       assignedAgentId: assignedAgentId,
-      sapModuleId:     q.sapModuleId,
+      sapModuleIdIn:   sapModuleIdIn.length ? sapModuleIdIn : undefined,
       search:          q.search,
       sortBy:          q.sortBy,
       sortOrder:       q.sortOrder,
