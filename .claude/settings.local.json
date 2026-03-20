@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \":*)",
+      "Bash(npx ts-node:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:YaUaooNTJoIDDmVbZABkwDeytcOBSguy@tramway.proxy.rlwy.net:31692/railway\" npx ts-node prisma/seed.ts)",
+      "Bash(node scripts/cleanup_remaining.js)",
+      "Bash(pg_isready -h 127.0.0.1 -p 5432 -U postgres)",
+      "Bash(docker --version)",
+      "Bash(docker compose:*)",
+      "Bash(where docker:*)",
+      "Bash(where psql:*)",
+      "Read(//c/Program Files/PostgreSQL//**)",
+      "Read(//c/Program Files \\(x86\\)/**)",
+      "Bash(net start:*)",
+      "Bash(sc start:*)",
+      "Bash(curl -s https://servicedesk-production-f664.up.railway.app/health)",
+      "Bash(npx prisma:*)",
+      "Bash(cmd.exe /c \"npx prisma migrate dev --name add_password_reset_fields\")",
+      "Bash(npx tsc:*)",
+      "WebSearch",
+      "WebFetch(domain:support.claude.com)"
+    ]
+  }
+}

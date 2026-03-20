@@ -32,6 +32,7 @@ export interface RecordFilters {
   priority?: string;
   assignedAgentId?: string;
   customerId?: string;
+  sapModuleId?: string;
   search?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';

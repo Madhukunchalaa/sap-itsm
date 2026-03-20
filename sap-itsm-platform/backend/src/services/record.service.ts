@@ -39,6 +39,7 @@ export interface ListRecordsInput {
   customerId?: string;
   customerIdIn?: string[];  // PROJECT_MANAGER role: scope to managed company IDs
   createdById?: string;     // USER role: scope to own tickets only
+  sapModuleId?: string;     // filter by SAP module
   search?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
@@ -253,6 +254,7 @@ export async function listRecords(input: ListRecordsInput) {
     ...(input.customerId      && { customerId:      input.customerId }),
     ...(input.customerIdIn    && { customerId:      { in: input.customerIdIn } }),
     ...(input.createdById     && { createdById:     input.createdById }),
+    ...(input.sapModuleId     && { sapModuleId:     input.sapModuleId }),
     ...(input.search && {
       OR: [
         { title:        { contains: input.search, mode: 'insensitive' } },

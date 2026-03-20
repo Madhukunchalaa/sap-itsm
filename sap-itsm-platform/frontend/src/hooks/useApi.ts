@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { recordsApi, dashboardApi, agentsApi, usersApi, customersApi, RecordFilters } from '../api/services';
+import { recordsApi, dashboardApi, agentsApi, usersApi, customersApi, sapModulesApi, RecordFilters } from '../api/services';
 import toast from 'react-hot-toast';
 import { getErrorMessage } from '../api/client';
 
@@ -146,5 +146,14 @@ export function useCustomers(params?: object) {
   return useQuery({
     queryKey: ['customers', params],
     queryFn: () => customersApi.list(params).then((r) => r.data),
+  });
+}
+
+// ── SAP Modules ───────────────────────────────────────────────
+export function useSapModules() {
+  return useQuery({
+    queryKey: ['sap-modules'],
+    queryFn: () => sapModulesApi.list().then((r) => r.data.modules ?? r.data),
+    staleTime: 5 * 60 * 1000,
   });
 }
