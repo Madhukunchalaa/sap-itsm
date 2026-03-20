@@ -42,11 +42,15 @@ export const listRecordsSchema = z.object({
     limit: z.coerce.number().int().min(1).max(100).default(20),
     recordType: z.enum(['INCIDENT', 'REQUEST', 'PROBLEM', 'CHANGE']).optional(),
     status: z
-      .enum(['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED', 'CANCELLED', 'AWAITING_CUSTOMER', 'REOPEN'])
+      .union([
+        z.enum(['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED', 'CANCELLED', 'AWAITING_CUSTOMER', 'REOPEN']),
+        z.array(z.enum(['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED', 'CANCELLED', 'AWAITING_CUSTOMER', 'REOPEN'])),
+      ])
       .optional(),
     priority: z.enum(['P1', 'P2', 'P3', 'P4']).optional(),
     assignedAgentId: z.string().uuid().optional(),
     customerId: z.string().uuid().optional(),
+    sapModuleId: z.string().uuid().optional(),
     search: z.string().max(200).optional(),
     sortBy: z
       .enum(['createdAt', 'updatedAt', 'priority', 'status', 'recordNumber'])
