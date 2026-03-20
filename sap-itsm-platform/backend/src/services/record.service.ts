@@ -260,6 +260,8 @@ export async function listRecords(input: ListRecordsInput) {
         { title:        { contains: input.search, mode: 'insensitive' } },
         { description:  { contains: input.search, mode: 'insensitive' } },
         { recordNumber: { contains: input.search, mode: 'insensitive' } },
+        { sapModule:    { code: { contains: input.search, mode: 'insensitive' } } },
+        { sapModule:    { name: { contains: input.search, mode: 'insensitive' } } },
       ],
     }),
     ...((input.from || input.to) ? {
