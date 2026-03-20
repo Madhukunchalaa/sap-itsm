@@ -55,7 +55,7 @@ export default function RecordsPage() {
 
   const { data, isLoading } = useRecords({
     ...filters,
-    statusIn: selectedStatuses.length ? selectedStatuses : undefined,
+    status: selectedStatuses.length ? (selectedStatuses as any) : undefined,
     search: search || undefined,
   });
 

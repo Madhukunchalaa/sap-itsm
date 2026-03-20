@@ -8,6 +8,18 @@ export const apiClient: AxiosInstance = axios.create({
   baseURL: BASE_URL,
   timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
+  paramsSerializer: (params) => {
+    const parts: string[] = [];
+    Object.entries(params).forEach(([key, value]) => {
+      if (value === undefined || value === null) return;
+      if (Array.isArray(value)) {
+        value.forEach((v) => parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(v)}`));
+      } else {
+        parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value as any)}`);
+      }
+    });
+    return parts.join('&');
+  },
 });
 
 // ── Request interceptor: attach JWT ──────────────────────────
