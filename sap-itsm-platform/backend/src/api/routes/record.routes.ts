@@ -70,12 +70,17 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
       // SUPER_ADMIN: no extra filters
     }
 
+    const rawStatus = q.status;
+    const statusIn: string[] = rawStatus
+      ? (Array.isArray(rawStatus) ? rawStatus : [rawStatus])
+      : [];
+
     const result = await listRecords({
       tenantId:        req.user!.tenantId,
       page:            Number(q.page) || 1,
       limit:           Number(q.limit) || 20,
       recordType:      q.recordType,
-      status:          q.status,
+      statusIn:        statusIn.length ? (statusIn as any) : undefined,
       priority:        q.priority,
       customerId:      customerIdIn ? undefined : customerId,
       customerIdIn:    customerIdIn,

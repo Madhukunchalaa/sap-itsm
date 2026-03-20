@@ -29,6 +29,7 @@ export interface RecordFilters {
   limit?: number;
   recordType?: string;
   status?: string;
+  statusIn?: string[];
   priority?: string;
   assignedAgentId?: string;
   customerId?: string;

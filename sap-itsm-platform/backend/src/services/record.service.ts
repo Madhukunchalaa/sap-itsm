@@ -34,6 +34,7 @@ export interface ListRecordsInput {
   limit: number;
   recordType?: RecordType;
   status?: RecordStatus;
+  statusIn?: RecordStatus[];   // multi-status filter
   priority?: Priority;
   assignedAgentId?: string;
   customerId?: string;
@@ -249,6 +250,7 @@ export async function listRecords(input: ListRecordsInput) {
     tenantId: input.tenantId,
     ...(input.recordType      && { recordType:      input.recordType }),
     ...(input.status          && { status:          input.status }),
+    ...(input.statusIn?.length && { status:          { in: input.statusIn } }),
     ...(input.priority        && { priority:        input.priority }),
     ...(input.assignedAgentId && { assignedAgentId: input.assignedAgentId }),
     ...(input.customerId      && { customerId:      input.customerId }),
