@@ -18,10 +18,7 @@ export default function RecordsPage() {
   const user = useAuthStore((s) => s.user);
   const canSeeModuleColumn = user?.role === 'SUPER_ADMIN' || user?.role === 'PROJECT_MANAGER';
 
-  const { data: modulesData } = useSapModules();
-  const sapModules: Array<{ id: string; code: string; name: string }> = Array.isArray(modulesData)
-    ? modulesData
-    : (modulesData as any)?.modules ?? [];
+  const { data: sapModules = [] } = useSapModules();
 
   const [filters, setFilters] = useState<RecordFilters>({
     page: 1, limit: 20, sortBy: 'createdAt', sortOrder: 'desc',

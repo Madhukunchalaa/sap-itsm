@@ -153,7 +153,7 @@ export function useCustomers(params?: object) {
 export function useSapModules() {
   return useQuery({
     queryKey: ['sap-modules'],
-    queryFn: () => sapModulesApi.list().then((r) => r.data.modules ?? r.data),
+    queryFn: () => sapModulesApi.list().then((r) => r.data.data as Array<{ id: string; code: string; name: string }>),
     staleTime: 5 * 60 * 1000,
   });
 }
