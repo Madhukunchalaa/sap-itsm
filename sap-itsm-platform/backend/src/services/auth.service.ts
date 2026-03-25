@@ -42,7 +42,10 @@ export async function loginUser(
 ): Promise<{ tokens: AuthTokens; user: object }> {
   const user = await prisma.user.findUnique({
     where: { email: email.toLowerCase().trim() },
-    include: { tenant: { select: { id: true, name: true, status: true } } },
+    include: {
+      tenant: { select: { id: true, name: true, status: true } },
+      customer: { select: { id: true, companyName: true } },
+    },
   });
 
   if (!user) {

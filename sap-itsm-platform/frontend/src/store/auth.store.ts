@@ -10,6 +10,7 @@ export interface AuthUser {
   tenantId: string;
   agent?: { id: string; level: string; status: string };
   tenant?: { id: string; name: string; timezone: string };
+  customer?: { id: string; companyName: string };
 }
 
 interface AuthState {

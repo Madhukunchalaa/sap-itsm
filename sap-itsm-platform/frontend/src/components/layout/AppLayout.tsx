@@ -216,7 +216,11 @@ export default function AppLayout() {
           </div>
           <div className="leading-tight">
             <p className="text-white font-bold text-base tracking-tight leading-none">Service Desk Intraedge</p>
-            <p className="text-white/60 text-[11px] font-medium mt-0.5">{user?.tenant?.name || 'ITSM Platform'}</p>
+            <p className="text-white/60 text-[11px] font-medium mt-0.5">
+              {role === 'USER'
+                ? (user?.customer?.companyName || 'ITSM Platform')
+                : 'Intraedge'}
+            </p>
           </div>
         </NavLink>
 
