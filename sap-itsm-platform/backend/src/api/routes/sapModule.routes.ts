@@ -37,7 +37,7 @@ router.get('/active', async (req: Request, res: Response, next: NextFunction) =>
 // POST /sap-modules — create module (SUPER_ADMIN only)
 // PATCH /sap-modules/sub-modules/:id — MUST be before /:id routes
 router.patch('/sub-modules/:id',
-  enforceRole('SUPER_ADMIN'),
+  enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { name, description, sortOrder, isActive } = req.body;
@@ -63,7 +63,7 @@ router.patch('/sub-modules/:id',
 
 // DELETE /sap-modules/sub-modules/:id — MUST be before /:id routes
 router.delete('/sub-modules/:id',
-  enforceRole('SUPER_ADMIN'),
+  enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const count = await prisma.iTSMRecord.count({ where: { sapSubModuleId: req.params.id } });
@@ -78,7 +78,7 @@ router.delete('/sub-modules/:id',
 );
 
 router.post('/',
-  enforceRole('SUPER_ADMIN'),
+  enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { code, name, description, sortOrder } = req.body;
@@ -108,7 +108,7 @@ router.post('/',
 
 // PATCH /sap-modules/:id — update module
 router.patch('/:id',
-  enforceRole('SUPER_ADMIN'),
+  enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { name, description, sortOrder, isActive } = req.body;
@@ -137,7 +137,7 @@ router.patch('/:id',
 
 // DELETE /sap-modules/:id
 router.delete('/:id',
-  enforceRole('SUPER_ADMIN'),
+  enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       // Check if any records use this module
@@ -159,7 +159,7 @@ router.delete('/:id',
 
 // POST /sap-modules/:moduleId/sub-modules
 router.post('/:moduleId/sub-modules',
-  enforceRole('SUPER_ADMIN'),
+  enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { code, name, description, sortOrder } = req.body;
@@ -189,7 +189,7 @@ router.post('/:moduleId/sub-modules',
 
 // ── Seed default SAP modules ─────────────────────────────────
 router.post('/seed',
-  enforceRole('SUPER_ADMIN'),
+  enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = req.user!.tenantId;

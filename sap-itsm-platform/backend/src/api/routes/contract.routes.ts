@@ -73,11 +73,18 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   } catch (err) { next(err); }
 });
 
-router.post('/', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { customerId, contractNumber, supportTypeMasterId, slaPolicyMasterId, startDate, endDate, autoRenewal, renewalNoticeDays, billingAmount, currency, billingFrequency, paymentTerms, notes, shiftIds, holidayCalendarIds } = req.body;
     if (!customerId || !contractNumber || !startDate || !endDate) {
       res.status(400).json({ success: false, error: 'customerId, contractNumber, startDate, endDate required' }); return;
+    }
+    // PROJECT_MANAGER: customerId must be one of their managed customers
+    if (req.user!.role === 'PROJECT_MANAGER') {
+      const agent = await resolveAgent(req.user!.sub);
+      if (!agent) { res.status(403).json({ success: false, error: 'Access denied' }); return; }
+      const ids = await resolveManagedCustomerIds(agent.id, req.user!.tenantId);
+      if (!ids.includes(customerId)) { res.status(403).json({ success: false, error: 'Access denied' }); return; }
     }
     const contract = await prisma.contract.create({
       data: {
@@ -97,13 +104,20 @@ router.post('/', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response,
   } catch (err) { next(err); }
 });
 
-router.patch('/:id', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/:id', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const old = await prisma.contract.findFirst({
       where: { id: req.params.id, customer: { tenantId: req.user!.tenantId } },
       include: { shifts: true },
     });
     if (!old) { res.status(404).json({ success: false, error: 'Contract not found' }); return; }
+    // PROJECT_MANAGER: verify contract belongs to a managed customer
+    if (req.user!.role === 'PROJECT_MANAGER') {
+      const agent = await resolveAgent(req.user!.sub);
+      if (!agent) { res.status(403).json({ success: false, error: 'Access denied' }); return; }
+      const ids = await resolveManagedCustomerIds(agent.id, req.user!.tenantId);
+      if (!ids.includes(old.customerId)) { res.status(403).json({ success: false, error: 'Access denied' }); return; }
+    }
 
     const allowed = ['supportTypeMasterId', 'slaPolicyMasterId', 'startDate', 'endDate', 'autoRenewal', 'renewalNoticeDays', 'billingAmount', 'currency', 'billingFrequency', 'paymentTerms', 'notes'];
     const data: Record<string, unknown> = {};

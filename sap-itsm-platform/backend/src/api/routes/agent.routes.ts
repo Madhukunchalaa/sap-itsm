@@ -77,7 +77,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   } catch (err) { next(err); }
 });
 
-router.post('/', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const agentType = req.body.agentType || 'AGENT';
     const agent = await prisma.agent.create({
@@ -99,7 +99,7 @@ router.post('/', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response,
 
 // POST /agents/link-user — fix an existing user who was created with wrong role
 // Corrects their role to AGENT or PROJECT_MANAGER and creates the agent record
-router.post('/link-user', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/link-user', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, agentType, specialization, level, timezone, status, metadata } = req.body;
     if (!email) { res.status(400).json({ success: false, error: 'Email is required' }); return; }
@@ -166,7 +166,7 @@ router.post('/link-user', enforceRole('SUPER_ADMIN'), async (req: Request, res: 
   } catch (err) { next(err); }
 });
 
-router.patch('/:id', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/:id', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const allowed = ['specialization', 'level', 'timezone', 'maxConcurrent', 'status', 'agentType', 'metadata'];
     const data: Record<string, unknown> = {};
@@ -181,7 +181,7 @@ router.patch('/:id', enforceRole('SUPER_ADMIN'), async (req: Request, res: Respo
 });
 
 // DELETE /agents/:id — removes agent record AND the linked user account
-router.delete('/:id', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:id', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const agent = await prisma.agent.findFirst({
       where: { id: req.params.id, user: { tenantId: req.user!.tenantId } },
@@ -208,7 +208,7 @@ router.delete('/:id', enforceRole('SUPER_ADMIN'), async (req: Request, res: Resp
 });
 
 // PUT /agents/:id/specializations — replace all specializations
-router.put('/:id/specializations', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id/specializations', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const agentId = req.params.id;
     const specs: Array<{ sapModuleId: string; sapSubModuleIds: string[] }> = req.body.specializations || [];

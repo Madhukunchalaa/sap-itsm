@@ -89,7 +89,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   } catch (err) { next(err); }
 });
 
-router.post('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { companyName, industry, country, timezone, status, website, contactName, contactEmail, contactPhone, billingEmail, billingAddress, notes, allowedDomains, adminUserId, projectManagerAgentId, holidayCalendarId, agentIds } = req.body;
     const customer = await prisma.customer.create({
@@ -112,8 +112,15 @@ router.post('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN'), async (req: Reques
   } catch (err) { next(err); }
 });
 
-router.patch('/:id', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/:id', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
+    // PROJECT_MANAGER: verify this is one of their managed customers
+    if (req.user!.role === 'PROJECT_MANAGER') {
+      const agent = await resolveAgent(req.user!.sub);
+      if (!agent) { res.status(403).json({ success: false, error: 'Access denied' }); return; }
+      const ids = await resolveManagedCustomerIds(agent.id, req.user!.tenantId);
+      if (!ids.includes(req.params.id)) { res.status(403).json({ success: false, error: 'Access denied' }); return; }
+    }
     const allowed = ['companyName', 'industry', 'country', 'timezone', 'status', 'website', 'contactName', 'contactEmail', 'contactPhone', 'billingEmail', 'billingAddress', 'notes', 'allowedDomains', 'adminUserId', 'projectManagerAgentId', 'holidayCalendarId'];
     const data: Record<string, unknown> = {};
     for (const k of allowed) if (req.body[k] !== undefined) data[k] = req.body[k] || undefined;

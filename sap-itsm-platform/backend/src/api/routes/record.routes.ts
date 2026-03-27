@@ -327,12 +327,25 @@ router.delete('/:id/attachments/:key(*)',
 );
 
 // ─────────────────────────────────────────────────────────────
-// DELETE /records/:id — delete (SUPER_ADMIN only)
+// DELETE /records/:id — SUPER_ADMIN (all) | PROJECT_MANAGER (managed customers)
 // ─────────────────────────────────────────────────────────────
 router.delete('/:id',
-  enforceRole('SUPER_ADMIN'),
+  enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      if (req.user!.role === 'PROJECT_MANAGER') {
+        const record = await prisma.iTSMRecord.findFirst({
+          where: { id: req.params.id, tenantId: req.user!.tenantId },
+          select: { customerId: true },
+        });
+        if (!record) { res.status(404).json({ success: false, error: 'Record not found' }); return; }
+        const agent = await resolveAgent(req.user!.sub);
+        if (!agent) { res.status(403).json({ success: false, error: 'Access denied' }); return; }
+        const ids = await resolveManagedCustomerIds(agent.id, req.user!.tenantId);
+        if (!record.customerId || !ids.includes(record.customerId)) {
+          res.status(403).json({ success: false, error: 'Access denied' }); return;
+        }
+      }
       await deleteRecord(req.params.id, req.user!.tenantId, req.user!.sub);
       res.json({ success: true, message: 'Record deleted' });
     } catch (err) { next(err); }

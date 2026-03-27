@@ -63,7 +63,7 @@ holidayRouter.delete('/:calendarId/dates/:dateId', enforceRole('SUPER_ADMIN', 'C
   } catch (err) { next(err); }
 });
 
-holidayRouter.delete('/:id', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+holidayRouter.delete('/:id', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     await prisma.holidayCalendar.deleteMany({ where: { id: req.params.id, tenantId: req.user!.tenantId } });
     res.json({ success: true });

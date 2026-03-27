@@ -26,7 +26,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   } catch (err) { next(err); }
 });
 
-router.post('/', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const {
       name, code, description, color,
@@ -60,7 +60,7 @@ router.post('/', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response,
   } catch (err) { next(err); }
 });
 
-router.patch('/:id', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/:id', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const allowed = [
       'name', 'description', 'color', 'workDays',
@@ -77,7 +77,7 @@ router.patch('/:id', enforceRole('SUPER_ADMIN'), async (req: Request, res: Respo
   } catch (err) { next(err); }
 });
 
-router.delete('/:id', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:id', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const inUse = await prisma.contract.count({ where: { supportTypeMasterId: req.params.id } });
     if (inUse > 0) { res.status(409).json({ success: false, error: `Cannot delete — used by ${inUse} contract(s)` }); return; }

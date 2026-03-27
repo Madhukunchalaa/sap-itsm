@@ -29,7 +29,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
 });
 
 // POST /sla-policies (SUPER_ADMIN only)
-router.post('/', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { name, code, description, color, warningThreshold, priorities, isActive } = req.body;
     const policy = await prisma.sLAPolicyMaster.create({
@@ -48,7 +48,7 @@ router.post('/', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response,
 });
 
 // PATCH /sla-policies/:id
-router.patch('/:id', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/:id', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const allowed = ['name', 'description', 'color', 'warningThreshold', 'priorities', 'isActive'];
     const data: Record<string, unknown> = {};
@@ -62,7 +62,7 @@ router.patch('/:id', enforceRole('SUPER_ADMIN'), async (req: Request, res: Respo
 });
 
 // DELETE /sla-policies/:id
-router.delete('/:id', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:id', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const inUse = await prisma.contract.count({ where: { slaPolicyMasterId: req.params.id } });
     if (inUse > 0) { res.status(409).json({ success: false, error: `Cannot delete — used by ${inUse} contract(s)` }); return; }
