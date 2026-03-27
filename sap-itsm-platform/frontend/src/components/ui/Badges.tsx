@@ -24,6 +24,7 @@ const STATUS_MAP: Record<string, { label: string; classes: string }> = {
   IN_PROGRESS:       { label: 'In Progress',       classes: 'bg-purple-100 text-purple-800' },
   PENDING:           { label: 'Pending',           classes: 'bg-yellow-100 text-yellow-800' },
   AWAITING_CUSTOMER: { label: 'Awaiting Customer', classes: 'bg-orange-100 text-orange-800' },
+  WITH_SAP:          { label: 'With SAP',          classes: 'bg-cyan-100 text-cyan-800' },
   RESOLVED:          { label: 'Resolved',          classes: 'bg-green-100 text-green-800' },
   CLOSED:            { label: 'Closed',            classes: 'bg-gray-100 text-gray-600' },
   CANCELLED:         { label: 'Cancelled',         classes: 'bg-red-50 text-red-500' },
