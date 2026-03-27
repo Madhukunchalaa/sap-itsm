@@ -67,7 +67,11 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
         assignedAgentId = agent.id;
         break;
       }
-      // SUPER_ADMIN: no extra filters
+      // SUPER_ADMIN / PROJECT_MANAGER: allow optional agent filter from query
+      default: {
+        if (q.assignedAgentId) assignedAgentId = q.assignedAgentId;
+        break;
+      }
     }
 
     // Helper: normalise a query field that can be a single string or an array

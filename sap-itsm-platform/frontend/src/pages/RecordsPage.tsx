@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Filter, Plus, X, Download } from 'lucide-react';
-import { useRecords, useSapModules } from '../hooks/useApi';
+import { useRecords, useSapModules, useAgents } from '../hooks/useApi';
 import { DataTable, Column } from '../components/ui/DataTable';
 import { PriorityBadge, StatusBadge, TypeBadge, SLABadge } from '../components/ui/Badges';
 import { PageHeader, Button } from '../components/ui/Forms';
@@ -75,6 +75,13 @@ export default function RecordsPage() {
     label: `${m.code} – ${m.name}`,
   }));
 
+  const canFilterByAgent = user?.role === 'SUPER_ADMIN' || user?.role === 'PROJECT_MANAGER';
+  const { data: agentsData } = useAgents(canFilterByAgent ? { limit: 200 } : undefined);
+  const agentOptions: MultiSelectOption[] = (agentsData?.data || []).map((a: any) => ({
+    value: a.id,
+    label: `${a.user.firstName} ${a.user.lastName}`,
+  }));
+
   // Base pagination / sort filters (non-multi)
   const [filters, setFilters] = useState<RecordFilters>({
     page: 1, limit: 20, sortBy: 'createdAt', sortOrder: 'desc',
@@ -85,17 +92,19 @@ export default function RecordsPage() {
   const [selType,     setSelType]     = useState<string[]>([]);
   const [selPriority, setSelPriority] = useState<string[]>([]);
   const [selModule,   setSelModule]   = useState<string[]>([]);
+  const [selAgent,    setSelAgent]    = useState<string>('');
 
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
   const { data, isLoading } = useRecords({
     ...filters,
-    status:     selStatus.length     ? (selStatus as any)   : undefined,
-    recordType: selType.length       ? (selType as any)     : undefined,
-    priority:   selPriority.length   ? (selPriority as any) : undefined,
-    sapModuleId: selModule.length    ? (selModule as any)   : undefined,
-    search: search || undefined,
+    status:          selStatus.length   ? (selStatus as any)   : undefined,
+    recordType:      selType.length     ? (selType as any)     : undefined,
+    priority:        selPriority.length ? (selPriority as any) : undefined,
+    sapModuleId:     selModule.length   ? (selModule as any)   : undefined,
+    assignedAgentId: selAgent           || undefined,
+    search:          search             || undefined,
   });
 
   const clearFilters = () => {
@@ -104,6 +113,7 @@ export default function RecordsPage() {
     setSelType([]);
     setSelPriority([]);
     setSelModule([]);
+    setSelAgent('');
     setSearch('');
   };
 
@@ -111,7 +121,8 @@ export default function RecordsPage() {
     (selStatus.length   > 0 ? 1 : 0) +
     (selType.length     > 0 ? 1 : 0) +
     (selPriority.length > 0 ? 1 : 0) +
-    (selModule.length   > 0 ? 1 : 0);
+    (selModule.length   > 0 ? 1 : 0) +
+    (selAgent           ? 1 : 0);
 
   const handleExportCSV = () => {
     const records = data?.data || [];
@@ -288,7 +299,7 @@ export default function RecordsPage() {
 
       {/* Filter panel */}
       {showFilters && (
-        <div className={`grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200 ${canSeeModuleColumn ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
+        <div className={`grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200 ${canSeeModuleColumn && canFilterByAgent ? 'sm:grid-cols-6' : canSeeModuleColumn || canFilterByAgent ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
           {/* Status */}
           <div>
             <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
@@ -346,6 +357,24 @@ export default function RecordsPage() {
                 onChange={(v) => { setSelModule(v); setFilters((f) => ({ ...f, page: 1 })); }}
                 placeholder="All Modules"
               />
+            </div>
+          )}
+
+          {/* Agent (SUPER_ADMIN / PM only) */}
+          {canFilterByAgent && (
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
+                Agent
+                {selAgent && <span className="text-blue-600 font-semibold">1</span>}
+              </label>
+              <select
+                value={selAgent}
+                onChange={(e) => { setSelAgent(e.target.value); setFilters((f) => ({ ...f, page: 1 })); }}
+                className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="">All Agents</option>
+                {agentOptions.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+              </select>
             </div>
           )}
 
