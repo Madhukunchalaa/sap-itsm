@@ -48,9 +48,18 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   } catch (err) { next(err); }
 });
 
-router.post('/', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { customerId, ...rest } = req.body;
+    // PROJECT_MANAGER: customerId must be one of their managed customers
+    if (req.user!.role === 'PROJECT_MANAGER') {
+      const agent = await resolveAgent(req.user!.sub);
+      if (!agent) { res.status(403).json({ success: false, error: 'Access denied' }); return; }
+      const ids = await resolveManagedCustomerIds(agent.id, req.user!.tenantId);
+      if (!customerId || !ids.includes(customerId)) {
+        res.status(403).json({ success: false, error: 'Access denied' }); return;
+      }
+    }
     const ci = await prisma.configurationItem.create({
       data: { ...rest, tenantId: req.user!.tenantId, customerId: customerId || null },
       include: { customer: { select: { id: true, companyName: true } } },
@@ -60,10 +69,19 @@ router.post('/', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response,
   } catch (err) { next(err); }
 });
 
-router.patch('/:id', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/:id', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const allowed = ['name', 'ciType', 'environment', 'sid', 'hostname', 'version', 'status', 'customerId', 'metadata'];
     const old = await prisma.configurationItem.findFirst({ where: { id: req.params.id, tenantId: req.user!.tenantId } });
+    // PROJECT_MANAGER: verify CI belongs to a managed customer
+    if (req.user!.role === 'PROJECT_MANAGER') {
+      const agent = await resolveAgent(req.user!.sub);
+      if (!agent || !old) { res.status(403).json({ success: false, error: 'Access denied' }); return; }
+      const ids = await resolveManagedCustomerIds(agent.id, req.user!.tenantId);
+      if (!old.customerId || !ids.includes(old.customerId)) {
+        res.status(403).json({ success: false, error: 'Access denied' }); return;
+      }
+    }
+    const allowed = ['name', 'ciType', 'environment', 'sid', 'hostname', 'version', 'status', 'customerId', 'metadata'];
     const data: Record<string, unknown> = {};
     for (const k of allowed) if (req.body[k] !== undefined) data[k] = req.body[k] === '' ? null : req.body[k];
     await prisma.configurationItem.updateMany({ where: { id: req.params.id, tenantId: req.user!.tenantId }, data });
@@ -73,8 +91,18 @@ router.patch('/:id', enforceRole('SUPER_ADMIN'), async (req: Request, res: Respo
   } catch (err) { next(err); }
 });
 
-router.delete('/:id', enforceRole('SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:id', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
+    // PROJECT_MANAGER: verify CI belongs to a managed customer
+    if (req.user!.role === 'PROJECT_MANAGER') {
+      const ci = await prisma.configurationItem.findFirst({ where: { id: req.params.id, tenantId: req.user!.tenantId }, select: { customerId: true } });
+      const agent = await resolveAgent(req.user!.sub);
+      if (!agent || !ci) { res.status(403).json({ success: false, error: 'Access denied' }); return; }
+      const ids = await resolveManagedCustomerIds(agent.id, req.user!.tenantId);
+      if (!ci.customerId || !ids.includes(ci.customerId)) {
+        res.status(403).json({ success: false, error: 'Access denied' }); return;
+      }
+    }
     const count = await prisma.iTSMRecord.count({ where: { ciId: req.params.id } });
     if (count > 0) {
       await prisma.configurationItem.updateMany({ where: { id: req.params.id, tenantId: req.user!.tenantId }, data: { status: 'DECOMMISSIONED' } });

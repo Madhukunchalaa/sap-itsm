@@ -16,7 +16,7 @@ holidayRouter.get('/', async (req: Request, res: Response, next: NextFunction) =
   } catch (err) { next(err); }
 });
 
-holidayRouter.post('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+holidayRouter.post('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { dates, ...calData } = req.body;
     const calendar = await prisma.holidayCalendar.create({
@@ -27,7 +27,7 @@ holidayRouter.post('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN'), async (req:
   } catch (err) { next(err); }
 });
 
-holidayRouter.patch('/:calendarId', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+holidayRouter.patch('/:calendarId', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const allowed = ['name', 'country', 'year', 'isActive'];
     const data: Record<string, unknown> = {};
@@ -37,7 +37,7 @@ holidayRouter.patch('/:calendarId', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN'),
   } catch (err) { next(err); }
 });
 
-holidayRouter.post('/:calendarId/dates', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+holidayRouter.post('/:calendarId/dates', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const cal = await prisma.holidayCalendar.findFirst({ where: { id: req.params.calendarId, tenantId: req.user!.tenantId } });
     if (!cal) { res.status(404).json({ success: false, error: 'Calendar not found' }); return; }
@@ -46,7 +46,7 @@ holidayRouter.post('/:calendarId/dates', enforceRole('SUPER_ADMIN', 'COMPANY_ADM
   } catch (err) { next(err); }
 });
 
-holidayRouter.patch('/:calendarId/dates/:dateId', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+holidayRouter.patch('/:calendarId/dates/:dateId', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const allowed = ['name', 'date', 'supportType'];
     const data: Record<string, unknown> = {};
@@ -56,7 +56,7 @@ holidayRouter.patch('/:calendarId/dates/:dateId', enforceRole('SUPER_ADMIN', 'CO
   } catch (err) { next(err); }
 });
 
-holidayRouter.delete('/:calendarId/dates/:dateId', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+holidayRouter.delete('/:calendarId/dates/:dateId', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     await prisma.holidayDate.delete({ where: { id: req.params.dateId } });
     res.json({ success: true });
@@ -71,9 +71,9 @@ holidayRouter.delete('/:id', enforceRole('SUPER_ADMIN'), async (req: Request, re
 });
 
 // ── AUDIT ROUTES ─────────────────────────────────────────────
-// Matrix: SUPER_ADMIN → all, COMPANY_ADMIN → own company records. Others blocked.
+// Matrix: SUPER_ADMIN → all, COMPANY_ADMIN → own company records, PROJECT_MANAGER → managed customers.
 export const auditRouter = Router();
-auditRouter.use(verifyJWT, enforceTenantScope, enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN'));
+auditRouter.use(verifyJWT, enforceTenantScope, enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'));
 
 auditRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -92,6 +92,19 @@ auditRouter.get('/', async (req: Request, res: Response, next: NextFunction) => 
         select: { id: true },
       });
       recordScope = companyRecords.map((r: any) => r.id);
+      if (recordScope.length === 0) {
+        res.json({ success: true, logs: [], pagination: { page, limit, total: 0 } }); return;
+      }
+    } else if (role === 'PROJECT_MANAGER') {
+      const agent = await resolveAgent(req.user!.sub);
+      if (!agent) { res.json({ success: true, logs: [], pagination: { page, limit, total: 0 } }); return; }
+      const ids = await resolveManagedCustomerIds(agent.id, tenantId);
+      if (ids.length === 0) { res.json({ success: true, logs: [], pagination: { page, limit, total: 0 } }); return; }
+      const pmRecords = await prisma.iTSMRecord.findMany({
+        where: { tenantId, customerId: { in: ids } },
+        select: { id: true },
+      });
+      recordScope = pmRecords.map((r: any) => r.id);
       if (recordScope.length === 0) {
         res.json({ success: true, logs: [], pagination: { page, limit, total: 0 } }); return;
       }
@@ -230,7 +243,7 @@ export default holidayRouter;
 
 // ── EMAIL LOG ROUTES ──────────────────────────────────────────
 export const emailLogRouter = Router();
-emailLogRouter.use(verifyJWT, enforceTenantScope, enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN'));
+emailLogRouter.use(verifyJWT, enforceTenantScope, enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'));
 
 emailLogRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {

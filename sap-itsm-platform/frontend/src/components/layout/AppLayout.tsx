@@ -37,7 +37,7 @@ const NAV_STRUCTURE = [
     roles: ['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'],
     children: [
       { to: '/customers',  icon: Building2, label: 'Customers',  roles: ['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'] },
-      { to: '/users',      icon: Users,     label: 'Users',      roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'] },
+      { to: '/users',      icon: Users,     label: 'Users',      roles: ['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'] },
       { to: '/contracts',  icon: FileText,  label: 'Contracts',  roles: ['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'] },
     ],
   },
@@ -53,24 +53,24 @@ const NAV_STRUCTURE = [
     icon: Zap,
     roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'],
   },
-  // Coverage dropdown — SUPER_ADMIN only
+  // Coverage dropdown
   {
     label: 'Coverage',
     icon: Shield,
-    roles: ['SUPER_ADMIN'],
+    roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'],
     children: [
-      { to: '/shifts',        icon: Clock,          label: 'Shifts',        roles: ['SUPER_ADMIN'] },
-      { to: '/support-types', icon: Shield,         label: 'Support Types', roles: ['SUPER_ADMIN'] },
-      { to: '/sla-policies',  icon: Target,         label: 'SLA Policies',  roles: ['SUPER_ADMIN'] },
-      { to: '/holidays',      icon: Calendar,       label: 'Holidays',      roles: ['SUPER_ADMIN'] },
+      { to: '/shifts',        icon: Clock,          label: 'Shifts',        roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
+      { to: '/support-types', icon: Shield,         label: 'Support Types', roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
+      { to: '/sla-policies',  icon: Target,         label: 'SLA Policies',  roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
+      { to: '/holidays',      icon: Calendar,       label: 'Holidays',      roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
     ],
   },
-  // Holidays standalone for non-SUPER_ADMIN (view only)
+  // Holidays standalone for COMPANY_ADMIN/AGENT (view only)
   {
     label: 'Holidays',
     to: '/holidays',
     icon: Calendar,
-    roles: ['COMPANY_ADMIN', 'PROJECT_MANAGER', 'AGENT'],
+    roles: ['COMPANY_ADMIN', 'AGENT'],
   },
   // Reporting dropdown
   {
@@ -85,17 +85,17 @@ const NAV_STRUCTURE = [
     label: 'Notifications',
     to: '/notifications',
     icon: Bell,
-    roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'],
+    roles: ['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'],
   },
-  // Admin dropdown — SUPER_ADMIN only
+  // Admin dropdown
   {
     label: 'Admin',
     icon: Settings,
-    roles: ['SUPER_ADMIN'],
+    roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'],
     children: [
-      { to: '/cmdb',         icon: Server,        label: 'CMDB',         roles: ['SUPER_ADMIN'] },
-      { to: '/sap-modules',  icon: Layers,        label: 'SAP Modules',  roles: ['SUPER_ADMIN'] },
-      { to: '/audit', icon: ShieldCheck,   label: 'Audit Log', roles: ['SUPER_ADMIN'] },
+      { to: '/cmdb',        icon: Server,      label: 'CMDB',        roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
+      { to: '/sap-modules', icon: Layers,      label: 'SAP Modules', roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
+      { to: '/audit',       icon: ShieldCheck, label: 'Audit Log',   roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
     ],
   },
 ];
