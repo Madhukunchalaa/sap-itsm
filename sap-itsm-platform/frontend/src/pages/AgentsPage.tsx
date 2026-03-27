@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { agentsApi, usersApi, sapModulesApi } from '../api/services';
+import { agentsApi, usersApi, sapModulesApi, customersApi } from '../api/services';
 import { useAuthStore } from '../store/auth.store';
 import { getErrorMessage } from '../api/client';
 import toast from 'react-hot-toast';
@@ -39,11 +39,12 @@ interface AgentForm {
   specialization: string; level: string; timezone: string;
   status: string; skills: string[];
   specializations: SpecEntry[];
+  assignedCustomerIds: string[];
 }
 const blank: AgentForm = {
   agentType: 'AGENT', fullName:'', email:'', phone:'', password:'',
   specialization:'', level:'L1', timezone:'IST', status:'AVAILABLE', skills:[],
-  specializations: [],
+  specializations: [], assignedCustomerIds: [],
 };
 
 export default function AgentsPage() {
@@ -66,6 +67,11 @@ export default function AgentsPage() {
     queryKey: ['sap-modules-active'],
     queryFn: () => sapModulesApi.active().then(r => r.data.data || []),
   });
+  const { data: customersData } = useQuery({
+    queryKey: ['customers-all'],
+    queryFn: () => customersApi.list({ limit: 200 }).then(r => r.data.data || []),
+  });
+  const allCustomers: any[] = customersData || [];
   const sapModules: any[] = sapModulesData || [];
   const all: any[] = data || [];
   const agents  = all.filter(a => (a.agentType || 'AGENT') === 'AGENT');
@@ -87,6 +93,10 @@ export default function AgentsPage() {
       sapModuleId: s.sapModuleId || s.sapModule?.id,
       sapSubModuleIds: s.sapSubModuleIds || [],
     }));
+    // Pre-populate customers already assigned to this PM
+    const currentlyAssigned = allCustomers
+      .filter((c: any) => c.projectManager?.id === a.id)
+      .map((c: any) => c.id);
     setForm({
       agentType: a.agentType || 'AGENT',
       fullName: `${a.user?.firstName} ${a.user?.lastName}`,
@@ -94,7 +104,7 @@ export default function AgentsPage() {
       password: '', specialization: a.specialization || '',
       level: a.level || 'L1', timezone: a.timezone || 'IST',
       status: a.status || 'AVAILABLE', skills: [],
-      specializations: specs,
+      specializations: specs, assignedCustomerIds: currentlyAssigned,
     });
     setEditId(a.id);
     setShowModal(true);
@@ -164,6 +174,22 @@ export default function AgentsPage() {
         });
         // Save specializations
         await agentsApi.updateSpecializations(editId, { specializations: form.specializations });
+        // For PM: sync customer assignments
+        if (form.agentType === 'PROJECT_MANAGER') {
+          const prevIds = allCustomers
+            .filter((c: any) => c.projectManager?.id === editId)
+            .map((c: any) => c.id);
+          // Add newly assigned
+          for (const cId of form.assignedCustomerIds) {
+            if (!prevIds.includes(cId))
+              await customersApi.update(cId, { projectManagerAgentId: editId });
+          }
+          // Remove unassigned
+          for (const cId of prevIds) {
+            if (!form.assignedCustomerIds.includes(cId))
+              await customersApi.update(cId, { projectManagerAgentId: null });
+          }
+        }
         toast.success(`${form.agentType === 'PROJECT_MANAGER' ? 'Project Manager' : 'Agent'} updated`);
       } else {
         // 1. Create user account — role based on agentType
@@ -188,10 +214,16 @@ export default function AgentsPage() {
           status: form.status,
           metadata: { phone: form.phone },
         });
-        // 3. Save specializations
         const newAgentId = agentRes.data.agent?.id;
+        // 3. Save specializations
         if (newAgentId && form.specializations.length > 0) {
           await agentsApi.updateSpecializations(newAgentId, { specializations: form.specializations });
+        }
+        // 4. For PM: assign selected customers
+        if (form.agentType === 'PROJECT_MANAGER' && newAgentId) {
+          for (const cId of form.assignedCustomerIds) {
+            await customersApi.update(cId, { projectManagerAgentId: newAgentId });
+          }
         }
         toast.success(`${form.agentType === 'PROJECT_MANAGER' ? 'Project Manager' : 'Agent'} created`);
       }
@@ -250,6 +282,7 @@ export default function AgentsPage() {
               <th className="text-left px-4 py-3 font-medium text-xs">Name</th>
               <th className="text-left px-4 py-3 font-medium text-xs">Email</th>
               <th className="text-left px-4 py-3 font-medium text-xs">Specialization</th>
+              {!showAgentCols && <th className="text-left px-4 py-3 font-medium text-xs">Assigned Projects</th>}
               {showAgentCols && <th className="text-left px-4 py-3 font-medium text-xs">Skills</th>}
               <th className="text-left px-4 py-3 font-medium text-xs">Level</th>
               <th className="text-left px-4 py-3 font-medium text-xs">Timezone</th>
@@ -288,6 +321,18 @@ export default function AgentsPage() {
                         : a.specialization || '—'}
                     </span>
                   </td>
+                  {!showAgentCols && (
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {allCustomers.filter((c: any) => c.projectManager?.id === a.id).map((c: any) => (
+                          <span key={c.id} className="text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">{c.companyName}</span>
+                        ))}
+                        {allCustomers.filter((c: any) => c.projectManager?.id === a.id).length === 0 && (
+                          <span className="text-gray-300 text-xs">—</span>
+                        )}
+                      </div>
+                    </td>
+                  )}
                   {showAgentCols && (
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
@@ -377,6 +422,45 @@ export default function AgentsPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Project assignment — only for PM type */}
+              {form.agentType === 'PROJECT_MANAGER' && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    Assign to Projects <span className="text-gray-400 font-normal text-xs">(select one or more customers)</span>
+                  </label>
+                  {allCustomers.length === 0 ? (
+                    <p className="text-xs text-gray-400 border border-dashed border-gray-200 rounded-xl px-3 py-3">No customers found</p>
+                  ) : (
+                    <div className="border border-gray-200 rounded-xl max-h-44 overflow-y-auto divide-y divide-gray-50">
+                      {allCustomers.map((c: any) => {
+                        const checked = form.assignedCustomerIds.includes(c.id);
+                        return (
+                          <label key={c.id} className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors hover:bg-gray-50 ${checked ? 'bg-indigo-50' : ''}`}>
+                            <input type="checkbox" checked={checked}
+                              onChange={() => {
+                                const ids = checked
+                                  ? form.assignedCustomerIds.filter(id => id !== c.id)
+                                  : [...form.assignedCustomerIds, c.id];
+                                setF('assignedCustomerIds', ids);
+                              }}
+                              className="w-4 h-4 accent-indigo-600 rounded flex-shrink-0"/>
+                            <span className={`text-sm font-medium ${checked ? 'text-indigo-700' : 'text-gray-700'}`}>{c.companyName}</span>
+                            {c.projectManager && c.projectManager.id !== editId && (
+                              <span className="ml-auto text-xs text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+                                has PM
+                              </span>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {form.assignedCustomerIds.length > 0 && (
+                    <p className="text-xs text-indigo-600 mt-1">{form.assignedCustomerIds.length} project(s) selected</p>
+                  )}
+                </div>
+              )}
 
               {/* Link mode toggle — only on create */}
               {!editId && (
