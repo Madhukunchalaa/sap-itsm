@@ -615,7 +615,12 @@ export async function notifyCommentDirect(params: {
   const record = await prisma.iTSMRecord.findFirst({
     where: { id: recordId, tenantId },
     include: {
-      customer: { select: { companyName: true } },
+      customer: {
+        select: {
+          companyName: true,
+          projectManager: { select: { userId: true, user: { select: { id: true, email: true, firstName: true, lastName: true } } } },
+        },
+      },
       createdBy: { select: { id: true, email: true, firstName: true, lastName: true } },
       assignedAgent: { include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } } },
     },
@@ -633,7 +638,7 @@ export async function notifyCommentDirect(params: {
     <a href="${portalUrl}/records/${record.id}" style="display:inline-block;margin-top:16px;background:#4338ca;color:white;padding:10px 20px;text-decoration:none;border-radius:6px;">View Ticket</a>
   </div>`;
 
-  // Collect participants: creator + assigned agent, excluding the commenter
+  // Collect participants: creator + assigned agent + project manager, excluding the commenter
   const participants: Array<{ id: string; email: string; firstName: string; lastName: string }> = [];
   if (record.createdBy && record.createdBy.id !== authorId) {
     participants.push(record.createdBy);
@@ -641,6 +646,10 @@ export async function notifyCommentDirect(params: {
   if (record.assignedAgent?.user && record.assignedAgent.user.id !== authorId) {
     const au = record.assignedAgent.user;
     if (!participants.find(p => p.id === au.id)) participants.push(au);
+  }
+  const pmUser = (record.customer as any)?.projectManager?.user;
+  if (pmUser && pmUser.id !== authorId && !participants.find(p => p.id === pmUser.id)) {
+    participants.push(pmUser);
   }
 
   for (const user of participants) {
@@ -654,6 +663,53 @@ export async function notifyCommentDirect(params: {
     } catch (e) {
       logger.error(`[notifyCommentDirect] Email failed to ${user.email}:`, e);
     }
+  }
+}
+
+// ── Direct PM notification for record updates (bypasses rules) ─
+export async function notifyPMOnUpdate(params: {
+  recordId: string;
+  tenantId: string;
+  triggeredById: string;
+  eventLabel: string;         // e.g. "Status changed to IN_PROGRESS"
+}): Promise<void> {
+  const { recordId, tenantId, triggeredById, eventLabel } = params;
+
+  const record = await prisma.iTSMRecord.findFirst({
+    where: { id: recordId, tenantId },
+    include: {
+      customer: {
+        select: {
+          companyName: true,
+          projectManager: { select: { userId: true, user: { select: { id: true, email: true, firstName: true, lastName: true } } } },
+        },
+      },
+    },
+  });
+  if (!record) return;
+
+  const pmUser = (record.customer as any)?.projectManager?.user;
+  if (!pmUser || pmUser.id === triggeredById) return;
+
+  const portalUrl = process.env.PORTAL_URL || 'http://localhost:3000';
+  const subject = `[${record.recordNumber}] ${eventLabel}`;
+  const html = `<div style="font-family:Arial,sans-serif;max-width:600px;">
+    <h2 style="color:#1a73e8;">Ticket Update: ${record.recordNumber}</h2>
+    <p>Hello ${pmUser.firstName},</p>
+    <p><b>${eventLabel}</b></p>
+    <table style="width:100%;border-collapse:collapse;">
+      <tr><td style="padding:8px;background:#f5f5f5;"><b>Ticket</b></td><td style="padding:8px;">${record.recordNumber} — ${record.title}</td></tr>
+      <tr><td style="padding:8px;background:#f5f5f5;"><b>Priority</b></td><td style="padding:8px;">${record.priority}</td></tr>
+      <tr><td style="padding:8px;background:#f5f5f5;"><b>Status</b></td><td style="padding:8px;">${record.status}</td></tr>
+      <tr><td style="padding:8px;background:#f5f5f5;"><b>Customer</b></td><td style="padding:8px;">${(record.customer as any)?.companyName || ''}</td></tr>
+    </table>
+    <a href="${portalUrl}/records/${record.id}" style="display:inline-block;margin-top:16px;background:#1a73e8;color:white;padding:10px 20px;text-decoration:none;border-radius:6px;">View Ticket</a>
+  </div>`;
+
+  try {
+    await sendEmail({ to: pmUser.email, subject, html });
+  } catch (e) {
+    logger.error(`[notifyPMOnUpdate] Email failed to ${pmUser.email}:`, e);
   }
 }
 

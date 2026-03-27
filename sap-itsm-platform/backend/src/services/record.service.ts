@@ -7,7 +7,7 @@ import { buildPaginatedResult, paginate } from '../utils/pagination';
 import { emailQueue } from '../workers/queues';
 import { slaQueue } from '../workers/queues';
 import { calculateSLADeadline, isSLAApplicable } from './sla.service';
-import { notify, notifyCommentDirect, notifyMentions, extractMentionNames } from './notifications/notification.service';
+import { notify, notifyCommentDirect, notifyMentions, extractMentionNames, notifyPMOnUpdate } from './notifications/notification.service';
 import { RecordStatus, RecordType, Priority, Prisma } from '@prisma/client';
 
 export interface CreateRecordInput {
@@ -425,11 +425,25 @@ export async function updateRecord(
       event: 'STATUS_CHANGED', recordId: id, tenantId, triggeredBy: userId,
       payload: { oldStatus: existing.status, newStatus: updates.status },
     }).catch(() => null);
+    notifyPMOnUpdate({
+      recordId: id, tenantId, triggeredById: userId,
+      eventLabel: `Status changed from ${existing.status} to ${updates.status}`,
+    }).catch(() => null);
   }
   if (updates.assignedAgentId && updates.assignedAgentId !== existing.assignedAgentId) {
     notify({
       event: 'ASSIGNED', recordId: id, tenantId, triggeredBy: userId,
       payload: { agentId: updates.assignedAgentId },
+    }).catch(() => null);
+    notifyPMOnUpdate({
+      recordId: id, tenantId, triggeredById: userId,
+      eventLabel: `Ticket assigned to a new agent`,
+    }).catch(() => null);
+  }
+  if (updates.priority && updates.priority !== existing.priority) {
+    notifyPMOnUpdate({
+      recordId: id, tenantId, triggeredById: userId,
+      eventLabel: `Priority changed from ${existing.priority} to ${updates.priority}`,
     }).catch(() => null);
   }
 
