@@ -7,7 +7,7 @@ import { buildPaginatedResult, paginate } from '../utils/pagination';
 import { emailQueue } from '../workers/queues';
 import { slaQueue } from '../workers/queues';
 import { calculateSLADeadline, isSLAApplicable } from './sla.service';
-import { notify } from './notifications/notification.service';
+import { notify, notifyCommentDirect, notifyMentions, extractMentionNames } from './notifications/notification.service';
 import { RecordStatus, RecordType, Priority, Prisma } from '@prisma/client';
 
 export interface CreateRecordInput {
@@ -468,6 +468,23 @@ export async function addComment(
         authorName: `${comment.author.firstName} ${comment.author.lastName}`,
       },
     }).catch(() => null);
+
+    // Direct notification to all ticket participants (always fires regardless of rules)
+    notifyCommentDirect({
+      recordId, tenantId, authorId,
+      authorName: `${comment.author.firstName} ${comment.author.lastName}`,
+      commentText: text, internalFlag,
+    }).catch(() => null);
+
+    // @mention notifications
+    const mentionNames = extractMentionNames(text);
+    if (mentionNames.length > 0) {
+      notifyMentions({
+        recordId, tenantId, authorId,
+        authorName: `${comment.author.firstName} ${comment.author.lastName}`,
+        commentText: text, mentionNames,
+      }).catch(() => null);
+    }
   }
   return comment;
 }

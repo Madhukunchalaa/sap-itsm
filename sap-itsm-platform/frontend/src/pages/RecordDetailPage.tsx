@@ -65,6 +65,8 @@ export default function RecordDetailPage() {
   const [attachmentsLoaded, setAttachmentsLoaded] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showMentionPicker, setShowMentionPicker] = useState(false);
+  const [mentionFilter, setMentionFilter] = useState('');
 
   const loadAttachments = async () => {
     if (attachmentsLoaded) return;
@@ -307,21 +309,76 @@ export default function RecordDetailPage() {
                   </div>
                 ))}
                 <div className="border-t border-gray-100 pt-4">
-                  <ReactQuill
-                    value={commentText}
-                    onChange={setCommentText}
-                    placeholder="Add a comment…"
-                    modules={{
-                      toolbar: [
-                        ['bold', 'italic', 'underline', 'strike'],
-                        [{ list: 'ordered' }, { list: 'bullet' }],
-                        ['link', 'blockquote', 'code-block'],
-                        ['clean'],
-                      ],
-                    }}
-                    className="rounded-lg"
-                    style={{ minHeight: '120px' }}
-                  />
+                  <div className="relative">
+                    <ReactQuill
+                      value={commentText}
+                      onChange={(val) => {
+                        setCommentText(val);
+                        // Detect trailing @mention pattern to show picker
+                        const plain = val.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ');
+                        const atMatch = plain.match(/@([A-Za-z]*)$/);
+                        if (atMatch) {
+                          setMentionFilter(atMatch[1].toLowerCase());
+                          setShowMentionPicker(true);
+                        } else {
+                          setShowMentionPicker(false);
+                          setMentionFilter('');
+                        }
+                      }}
+                      placeholder="Add a comment… (use @name to mention someone)"
+                      modules={{
+                        toolbar: [
+                          ['bold', 'italic', 'underline', 'strike'],
+                          [{ list: 'ordered' }, { list: 'bullet' }],
+                          ['link', 'blockquote', 'code-block'],
+                          ['clean'],
+                        ],
+                      }}
+                      className="rounded-lg"
+                      style={{ minHeight: '120px' }}
+                    />
+                    {showMentionPicker && (() => {
+                      const mentionableUsers = agents
+                        .filter((a: any) => {
+                          if (!a.user) return false;
+                          const full = `${a.user.firstName} ${a.user.lastName}`.toLowerCase();
+                          const first = (a.user.firstName || '').toLowerCase();
+                          return mentionFilter === '' || first.startsWith(mentionFilter) || full.startsWith(mentionFilter);
+                        })
+                        .slice(0, 8);
+                      if (mentionableUsers.length === 0) return null;
+                      return (
+                        <div className="absolute z-50 bottom-full mb-1 left-0 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px] max-h-48 overflow-y-auto">
+                          <p className="text-xs text-gray-400 px-3 pt-2 pb-1">Mention a user</p>
+                          {mentionableUsers.map((a: any) => (
+                            <button
+                              key={a.id}
+                              type="button"
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                const fullName = `${a.user.firstName} ${a.user.lastName}`;
+                                // Replace trailing @... with @FullName
+                                const withMention = commentText.replace(/@([A-Za-z]*)(<\/[^>]+>)?$/, (m, _partial, closing) => {
+                                  return `@${fullName}${closing || ''}`;
+                                });
+                                // If no replacement happened, append
+                                const updated = withMention !== commentText ? withMention : commentText + `@${fullName}`;
+                                setCommentText(updated);
+                                setShowMentionPicker(false);
+                                setMentionFilter('');
+                              }}
+                            >
+                              <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center flex-shrink-0">
+                                {a.user.firstName?.[0]}{a.user.lastName?.[0]}
+                              </span>
+                              {a.user.firstName} {a.user.lastName}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
                   <div className="flex items-center justify-between mt-2">
                     {isAgent && (
                       <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">

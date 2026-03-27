@@ -600,6 +600,139 @@ export async function notify(input: NotifyInput): Promise<{
   return stats;
 }
 
+// ── Direct comment notification (bypasses rules) ─────────────
+export async function notifyCommentDirect(params: {
+  recordId: string;
+  tenantId: string;
+  authorId: string;
+  authorName: string;
+  commentText: string;
+  internalFlag: boolean;
+}): Promise<void> {
+  const { recordId, tenantId, authorId, authorName, commentText, internalFlag } = params;
+  if (internalFlag) return; // don't notify for internal notes
+
+  const record = await prisma.iTSMRecord.findFirst({
+    where: { id: recordId, tenantId },
+    include: {
+      customer: { select: { companyName: true } },
+      createdBy: { select: { id: true, email: true, firstName: true, lastName: true } },
+      assignedAgent: { include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } } },
+    },
+  });
+  if (!record) return;
+
+  const portalUrl = process.env.PORTAL_URL || 'http://localhost:3000';
+  const plainComment = commentText.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+  const subject = `New comment on ${record.recordNumber} — ${record.title}`;
+  const htmlBody = `<div style="font-family:Arial,sans-serif;max-width:600px;">
+    <h2 style="color:#4338ca;">New Comment on ${record.recordNumber}</h2>
+    <p><b>${record.title}</b></p>
+    <p><b>${authorName}</b> commented:</p>
+    <blockquote style="border-left:3px solid #6366f1;padding-left:16px;color:#374151;background:#f9fafb;padding:12px 16px;border-radius:4px;">${plainComment}</blockquote>
+    <a href="${portalUrl}/records/${record.id}" style="display:inline-block;margin-top:16px;background:#4338ca;color:white;padding:10px 20px;text-decoration:none;border-radius:6px;">View Ticket</a>
+  </div>`;
+
+  // Collect participants: creator + assigned agent, excluding the commenter
+  const participants: Array<{ id: string; email: string; firstName: string; lastName: string }> = [];
+  if (record.createdBy && record.createdBy.id !== authorId) {
+    participants.push(record.createdBy);
+  }
+  if (record.assignedAgent?.user && record.assignedAgent.user.id !== authorId) {
+    const au = record.assignedAgent.user;
+    if (!participants.find(p => p.id === au.id)) participants.push(au);
+  }
+
+  for (const user of participants) {
+    // Email only (in-app is handled by the rules-based notify())
+    try {
+      await sendEmail({
+        to: user.email,
+        subject,
+        html: htmlBody.replace('Hello,', `Hello ${user.firstName},`),
+      });
+    } catch (e) {
+      logger.error(`[notifyCommentDirect] Email failed to ${user.email}:`, e);
+    }
+  }
+}
+
+// ── @mention notifications ────────────────────────────────────
+export function extractMentionNames(html: string): string[] {
+  const plain = html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ');
+  const matches = plain.match(/@([A-Za-z]+(?:\s+[A-Za-z]+)?)/g) || [];
+  return [...new Set(matches.map(m => m.slice(1).trim().toLowerCase()))];
+}
+
+export async function notifyMentions(params: {
+  recordId: string;
+  tenantId: string;
+  authorId: string;
+  authorName: string;
+  commentText: string;
+  mentionNames: string[];
+}): Promise<void> {
+  const { recordId, tenantId, authorId, authorName, commentText, mentionNames } = params;
+  if (mentionNames.length === 0) return;
+
+  const record = await prisma.iTSMRecord.findFirst({
+    where: { id: recordId, tenantId },
+    select: { id: true, recordNumber: true, title: true },
+  });
+  if (!record) return;
+
+  // Find all active users in tenant
+  const allUsers = await prisma.user.findMany({
+    where: { tenantId, status: 'ACTIVE', id: { not: authorId } },
+    select: { id: true, email: true, firstName: true, lastName: true },
+  });
+
+  const portalUrl = process.env.PORTAL_URL || 'http://localhost:3000';
+  const plainComment = commentText.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+
+  for (const name of mentionNames) {
+    // Try to match by firstName or "firstName lastName"
+    const parts = name.split(' ');
+    const matched = allUsers.filter(u => {
+      const full = `${u.firstName} ${u.lastName}`.toLowerCase();
+      const first = u.firstName.toLowerCase();
+      return first === parts[0] || full === name || full.startsWith(name);
+    });
+
+    for (const user of matched) {
+      // In-app notification
+      try {
+        await prisma.notification.create({
+          data: {
+            tenantId,
+            userId: user.id,
+            recordId,
+            event: 'COMMENT_AGENT',
+            title: `${authorName} mentioned you in ${record.recordNumber}`,
+            body: plainComment.slice(0, 120),
+          },
+        });
+      } catch {}
+      // Email
+      try {
+        await sendEmail({
+          to: user.email,
+          subject: `You were mentioned in ${record.recordNumber} — ${record.title}`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:600px;">
+            <h2 style="color:#7c3aed;">You were mentioned in ${record.recordNumber}</h2>
+            <p>Hello ${user.firstName},</p>
+            <p><b>${authorName}</b> mentioned you in ticket <b>${record.recordNumber}</b> — ${record.title}:</p>
+            <blockquote style="border-left:3px solid #7c3aed;padding:12px 16px;background:#faf5ff;color:#374151;border-radius:4px;">${plainComment}</blockquote>
+            <a href="${portalUrl}/records/${record.id}" style="display:inline-block;margin-top:16px;background:#7c3aed;color:white;padding:10px 20px;text-decoration:none;border-radius:6px;">View Ticket</a>
+          </div>`,
+        });
+      } catch (e) {
+        logger.error(`[notifyMentions] Email failed to ${user.email}:`, e);
+      }
+    }
+  }
+}
+
 // ── Seed default rules ────────────────────────────────────────
 export async function seedDefaultNotificationRules(tenantId: string): Promise<number> {
   // Get default template IDs for this tenant
