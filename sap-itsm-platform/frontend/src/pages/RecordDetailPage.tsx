@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MessageSquare, Timer, Paperclip, Save, X, Send, Lock, Edit2, History, Trash2, Upload, Download } from 'lucide-react';
-import { useRecord, useUpdateRecord, useAddComment, useAddTimeEntry, useAgents, useDeleteRecord } from '../hooks/useApi';
+import { ArrowLeft, MessageSquare, Timer, Paperclip, Save, X, Send, Lock, Edit2, History, Trash2, Upload, Download, XCircle } from 'lucide-react';
+import { useRecord, useUpdateRecord, useAddComment, useAddTimeEntry, useAgents, useDeleteRecord, useCloseRecord } from '../hooks/useApi';
 import { auditApi, recordsApi } from '../api/services';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { PriorityBadge, StatusBadge, TypeBadge } from '../components/ui/Badges';
@@ -40,6 +40,7 @@ export default function RecordDetailPage() {
   const { data: record, isLoading } = useRecord(id!);
   const updateRecord = useUpdateRecord();
   const deleteRecord = useDeleteRecord();
+  const closeRecord = useCloseRecord();
   const addComment = useAddComment();
   const addTimeEntry = useAddTimeEntry();
   const { data: agentsData } = useAgents({ limit: 100 });
@@ -53,6 +54,7 @@ export default function RecordDetailPage() {
   const [timeModal, setTimeModal] = useState(false);
   const [timeForm, setTimeForm] = useState({ hours:'', description:'', workDate: format(new Date(),'yyyy-MM-dd') });
   const [deleteModal, setDeleteModal] = useState(false);
+  const [closeModal, setCloseModal] = useState(false);
 
   const [editMode, setEditMode] = useState(false);
   const [editedStatus, setEditedStatus] = useState('');
@@ -87,6 +89,8 @@ export default function RecordDetailPage() {
   const canSeeInternal = ['SUPER_ADMIN', 'AGENT'].includes(user?.role||'');
   const isAgent = ['SUPER_ADMIN','COMPANY_ADMIN','AGENT','PROJECT_MANAGER'].includes(user?.role||'');
   const canLogTime = ['SUPER_ADMIN','AGENT','PROJECT_MANAGER'].includes(user?.role||'');
+  const isEndUser = user?.role === 'END_USER';
+  const canClose = isEndUser && !['CLOSED','CANCELLED'].includes(record.status);
 
   const handleEnterEdit = () => {
     setEditedStatus(record.status);
@@ -158,18 +162,24 @@ export default function RecordDetailPage() {
             : <h1 className="text-xl font-bold text-gray-900">{record.title}</h1>
           }
         </div>
-        {canEdit && !editMode && (
+        {!editMode && (
           <div className="flex gap-2">
+            {canClose && (
+              <button onClick={() => setCloseModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
+                <XCircle className="w-4 h-4"/> Close Ticket
+              </button>
+            )}
             {user?.role === 'SUPER_ADMIN' && (
               <button onClick={() => setDeleteModal(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-red-200 rounded-lg text-red-600 hover:bg-red-50">
                 <Trash2 className="w-4 h-4"/> Delete
               </button>
             )}
-            <button onClick={handleEnterEdit}
+            {canEdit && <button onClick={handleEnterEdit}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">
               <Edit2 className="w-4 h-4"/> Edit
-            </button>
+            </button>}
           </div>
         )}
         {editMode && (
@@ -643,6 +653,19 @@ export default function RecordDetailPage() {
           </div>
           <Textarea label="Description" value={timeForm.description}
             onChange={e=>setTimeForm(f=>({...f,description:e.target.value}))} placeholder="What did you work on?" rows={3}/>
+        </div>
+      </Modal>}
+
+      {closeModal && <Modal open={closeModal} onClose={()=>setCloseModal(false)} title="Close Ticket" size="sm"
+        footer={<><Button variant="secondary" onClick={()=>setCloseModal(false)}>Cancel</Button><Button onClick={async()=>{await closeRecord.mutateAsync(record.id);setCloseModal(false);}} loading={closeRecord.isPending} className="bg-gray-800 hover:bg-gray-900">Yes, Close Ticket</Button></>}>
+        <div className="space-y-3">
+          <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <XCircle className="w-6 h-6 text-gray-600"/>
+          </div>
+          <p className="text-sm text-gray-600 text-center">Are you sure you want to close ticket <strong>{record.recordNumber}</strong>?</p>
+          <p className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-200 text-center">
+            This will mark the ticket as <strong>CLOSED</strong>. You won't be able to reopen it yourself.
+          </p>
         </div>
       </Modal>}
 

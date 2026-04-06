@@ -121,6 +121,22 @@ export function useDeleteRecord() {
   });
 }
 
+export function useCloseRecord() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => recordsApi.close(id),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ['records'] });
+      queryClient.invalidateQueries({ queryKey: ['record', id] });
+      queryClient.removeQueries({ queryKey: ['dashboard'] });
+      queryClient.removeQueries({ queryKey: ['dashboard-pm'] });
+      queryClient.removeQueries({ queryKey: ['dashboard-customer'] });
+      toast.success('Ticket closed successfully');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+}
+
 // ── Agents ────────────────────────────────────────────────────
 export function useAgents(params?: object) {
   return useQuery({

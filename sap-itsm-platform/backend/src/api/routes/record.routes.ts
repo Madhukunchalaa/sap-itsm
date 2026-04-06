@@ -182,6 +182,36 @@ router.post('/',
 );
 
 // ─────────────────────────────────────────────────────────────
+// POST /records/:id/close — end-user closes their own resolved ticket
+// ─────────────────────────────────────────────────────────────
+router.post('/:id/close', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const role = req.user!.role;
+    const record = await prisma.iTSMRecord.findFirst({
+      where: { id: req.params.id, tenantId: req.user!.tenantId },
+    });
+    if (!record) { res.status(404).json({ success: false, error: 'Not found' }); return; }
+
+    // End users can only close tickets they created, and only when RESOLVED
+    if (role === 'END_USER') {
+      if (record.createdBy !== req.user!.sub) {
+        res.status(403).json({ success: false, error: 'Access denied' }); return;
+      }
+      if (!['RESOLVED', 'OPEN', 'IN_PROGRESS', 'PENDING', 'AWAITING_CUSTOMER'].includes(record.status)) {
+        res.status(400).json({ success: false, error: 'Ticket cannot be closed from its current status' }); return;
+      }
+    } else if (!['SUPER_ADMIN','COMPANY_ADMIN','AGENT','PROJECT_MANAGER'].includes(role)) {
+      res.status(403).json({ success: false, error: 'Access denied' }); return;
+    }
+
+    const updated = await prisma.iTSMRecord.update({
+      where: { id: record.id },
+      data: { status: 'CLOSED', resolvedAt: record.resolvedAt ?? new Date(), updatedAt: new Date() },
+    });
+    res.json({ success: true, record: updated });
+  } catch (err) { next(err); }
+});
+
 // PATCH /records/:id — update (USER blocked)
 // ─────────────────────────────────────────────────────────────
 router.patch('/:id',

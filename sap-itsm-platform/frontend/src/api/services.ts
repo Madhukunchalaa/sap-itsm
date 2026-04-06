@@ -59,6 +59,7 @@ export const recordsApi = {
 
   getHistory: (id: string) => apiClient.get(`/records/${id}/history`),
   delete: (id: string) => apiClient.delete(`/records/${id}`),
+  close: (id: string) => apiClient.post(`/records/${id}/close`),
 
   uploadAttachment: (id: string, file: File) => {
     const form = new FormData();
