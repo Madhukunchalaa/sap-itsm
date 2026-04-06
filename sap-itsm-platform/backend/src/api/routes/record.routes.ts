@@ -184,10 +184,38 @@ router.post('/',
 // PATCH /records/:id — update (USER blocked)
 // ─────────────────────────────────────────────────────────────
 router.patch('/:id',
-  enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENT', 'PROJECT_MANAGER'),
+  enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENT', 'PROJECT_MANAGER', 'USER'),
   validate(updateRecordSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const role = req.user!.role;
+      const userId = req.user!.sub;
+
+      // Access Control: USER can only update their OWN records and ONLY the 'status' field.
+      if (role === 'USER') {
+        const record = await prisma.iTSMRecord.findFirst({
+          where: { id: req.params.id, tenantId: req.user!.tenantId },
+          select: { createdById: true },
+        });
+
+        if (!record || record.createdById !== userId) {
+          res.status(403).json({ success: false, error: 'Access denied. You can only update your own tickets.' });
+          return;
+        }
+
+        const allowedFields = ['status'];
+        const updateKeys = Object.keys(req.body);
+        const forbiddenKeys = updateKeys.filter(k => !allowedFields.includes(k));
+
+        if (forbiddenKeys.length > 0) {
+          res.status(403).json({
+            success: false,
+            error: `Access denied. Users can only update: ${allowedFields.join(', ')}`,
+          });
+          return;
+        }
+      }
+
       const record = await updateRecord(
         req.params.id, req.user!.tenantId, req.user!.sub, req.body
       );

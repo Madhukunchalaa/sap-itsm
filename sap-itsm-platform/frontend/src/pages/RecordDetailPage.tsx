@@ -82,7 +82,7 @@ export default function RecordDetailPage() {
   if (isLoading) return <LoadingSpinner fullscreen label="Loading ticket…"/>;
   if (!record) return <div className="p-8 text-center text-gray-400">Ticket not found.</div>;
 
-  const canEdit = ['SUPER_ADMIN','COMPANY_ADMIN','AGENT','PROJECT_MANAGER'].includes(user?.role||'');
+  const canEdit = ['SUPER_ADMIN','COMPANY_ADMIN','AGENT','PROJECT_MANAGER','USER'].includes(user?.role||'');
   const canAssign = ['SUPER_ADMIN','COMPANY_ADMIN','PROJECT_MANAGER'].includes(user?.role||'');
   const canSeeInternal = ['SUPER_ADMIN', 'AGENT'].includes(user?.role||'');
   const isAgent = ['SUPER_ADMIN','COMPANY_ADMIN','AGENT','PROJECT_MANAGER'].includes(user?.role||'');
@@ -152,7 +152,7 @@ export default function RecordDetailPage() {
             <span className="font-mono text-sm text-gray-400">{record.recordNumber}</span>
             <TypeBadge type={record.recordType}/>
           </div>
-          {editMode
+          {editMode && user?.role !== 'USER'
             ? <input value={editedTitle} onChange={e=>setEditedTitle(e.target.value)}
                 className="w-full text-xl font-bold text-gray-900 border-b-2 border-blue-500 focus:outline-none bg-transparent pb-1"/>
             : <h1 className="text-xl font-bold text-gray-900">{record.title}</h1>
@@ -192,7 +192,7 @@ export default function RecordDetailPage() {
           <Card>
             <div className={`p-5 border-l-4 ${PRIORITY_COLORS[record.priority]||'border-l-gray-300'}`}>
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Description</h3>
-              {editMode
+              {editMode && user?.role !== 'USER'
                 ? <textarea value={editedDescription} onChange={e=>setEditedDescription(e.target.value)}
                     rows={5} className="w-full text-sm text-gray-600 border border-blue-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"/>
                 : <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{record.description}</p>
@@ -504,7 +504,7 @@ export default function RecordDetailPage() {
                   {editMode
                     ? <select value={editedStatus} onChange={e=>setEditedStatus(e.target.value)}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                        {(user?.role === 'SUPER_ADMIN' || user?.role === 'PROJECT_MANAGER'
+                        {(user?.role === 'SUPER_ADMIN' || user?.role === 'PROJECT_MANAGER' || user?.role === 'AGENT'
                           ? SUPER_ADMIN_ALL_STATUSES
                           : [record.status,...(STATUS_TRANSITIONS[record.status]||[])]
                         ).map(s=>(
@@ -519,7 +519,7 @@ export default function RecordDetailPage() {
               <div>
                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Priority</label>
                 <div className="mt-1.5">
-                  {editMode
+                  {editMode && user?.role !== 'USER'
                     ? <select value={editedPriority} onChange={e=>setEditedPriority(e.target.value)}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
                         {['P1','P2','P3','P4'].map(p=><option key={p}>{p}</option>)}
