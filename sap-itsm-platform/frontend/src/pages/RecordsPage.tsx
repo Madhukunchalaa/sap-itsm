@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Filter, Plus, X, Download } from 'lucide-react';
 import { useRecords, useSapModules, useAgents } from '../hooks/useApi';
@@ -82,20 +82,19 @@ export default function RecordsPage() {
     label: `${a.user.firstName} ${a.user.lastName}`,
   }));
 
-  // Base pagination / sort filters (non-multi)
-  const [filters, setFilters] = useState<RecordFilters>({
-    page: 1, limit: 20, sortBy: 'createdAt', sortOrder: 'desc',
-  });
-
-  // Multi-select state
-  const [selStatus,   setSelStatus]   = useState<string[]>([]);
-  const [selType,     setSelType]     = useState<string[]>([]);
-  const [selPriority, setSelPriority] = useState<string[]>([]);
-  const [selModule,   setSelModule]   = useState<string[]>([]);
-  const [selAgent,    setSelAgent]    = useState<string>('');
-
-  const [search, setSearch] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
+  // ── State from Store ───────────────────────────────────────
+  const {
+    filters, setFilters,
+    selStatus, setSelStatus,
+    selType, setSelType,
+    selPriority, setSelPriority,
+    selModule, setSelModule,
+    selAgent, setSelAgent,
+    search, setSearch,
+    showFilters, setShowFilters,
+    selectedIds, setSelectedIds, toggleSelectedId,
+    reset: clearFilters
+  } = useRecordFilterStore();
 
   const { data, isLoading } = useRecords({
     ...filters,
@@ -106,16 +105,6 @@ export default function RecordsPage() {
     assignedAgentId: selAgent           || undefined,
     search:          search             || undefined,
   });
-
-  const clearFilters = () => {
-    setFilters({ page: 1, limit: 20, sortBy: 'createdAt', sortOrder: 'desc' });
-    setSelStatus([]);
-    setSelType([]);
-    setSelPriority([]);
-    setSelModule([]);
-    setSelAgent('');
-    setSearch('');
-  };
 
   const activeFilterCount =
     (selStatus.length   > 0 ? 1 : 0) +
@@ -369,7 +358,7 @@ export default function RecordsPage() {
               </label>
               <select
                 value={selAgent}
-                onChange={(e) => { setSelAgent(e.target.value); setFilters((f) => ({ ...f, page: 1 })); }}
+                onChange={(e) => setSelAgent(e.target.value)}
                 className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               >
                 <option value="">All Agents</option>
@@ -385,7 +374,7 @@ export default function RecordsPage() {
               value={sortValue}
               onChange={(e) => {
                 const [by, order] = e.target.value.split('_');
-                setFilters((f) => ({ ...f, sortBy: by, sortOrder: order as any, page: 1 }));
+                setFilters({ sortBy: by, sortOrder: order as any, page: 1 });
               }}
               className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
@@ -403,9 +392,12 @@ export default function RecordsPage() {
         keyExtractor={(r) => r.id}
         onRowClick={(r) => navigate(`/records/${r.id}`)}
         emptyMessage="No tickets found. Create your first ticket to get started."
+        selectedIds={selectedIds}
+        onSelectRow={toggleSelectedId}
+        onSelectAll={setSelectedIds}
         pagination={
           data?.pagination
-            ? { ...data.pagination, onPage: (p) => setFilters((f) => ({ ...f, page: p })) }
+            ? { ...data.pagination, onPage: (p) => setFilters({ page: p }) }
             : undefined
         }
       />
