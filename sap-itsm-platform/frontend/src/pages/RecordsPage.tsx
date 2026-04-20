@@ -9,6 +9,7 @@ import { MultiSelectDropdown, MultiSelectOption } from '../components/ui/MultiSe
 import { formatDistanceToNow } from 'date-fns';
 import { RecordFilters } from '../api/services';
 import { useAuthStore } from '../store/auth.store';
+import { useRecordFilterStore } from '../store/record-filter.store';
 
 // ── Static filter options ────────────────────────────────────
 const STATUS_OPTIONS: MultiSelectOption[] = [
