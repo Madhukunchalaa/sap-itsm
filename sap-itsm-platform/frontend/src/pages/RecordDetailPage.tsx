@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MessageSquare, Timer, Paperclip, Save, X, Send, Lock, Edit2, History, Trash2, Upload, Download } from 'lucide-react';
+import { ArrowLeft, MessageSquare, Timer, Paperclip, Save, X, Send, Lock, Edit2, History, Trash2, Upload, Download, ExternalLink, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
 import { useRecord, useUpdateRecord, useAddComment, useAddTimeEntry, useAgents, useDeleteRecord } from '../hooks/useApi';
 import { auditApi, recordsApi } from '../api/services';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
@@ -618,6 +618,53 @@ export default function RecordDetailPage() {
               )}
             </div>
           </Card>
+
+          {/* SAP Integration Status */}
+          {(record.metadata as any)?.sapSyncStatus && (
+            <Card title="SAP Mirroring">
+              <div className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-gray-500 uppercase">Sync Status</span>
+                  <div className="flex items-center gap-1.5">
+                    {(record.metadata as any).sapSyncStatus === 'SUCCESS' ? (
+                      <span className="flex items-center gap-1 text-xs font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                        <CheckCircle className="w-3 h-3"/> Mirrored
+                      </span>
+                    ) : (record.metadata as any).sapSyncStatus === 'FAILED' ? (
+                      <span className="flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+                        <AlertCircle className="w-3 h-3"/> Failed
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full anime-spin">
+                        <RefreshCw className="w-3 h-3"/> Syncing...
+                      </span>
+                    )}
+                  </div>
+                </div>
+                
+                {(record.metadata as any).sapIncidentId && (
+                  <div className="flex items-center justify-between border-t border-gray-50 pt-3">
+                    <span className="text-xs font-medium text-gray-500 uppercase">SAP Reference</span>
+                    <a 
+                      href={`https://sap-portal.intraedge.com/incident/${(record.metadata as any).sapIncidentId}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+                    >
+                      #{(record.metadata as any).sapIncidentId}
+                      <ExternalLink className="w-3.5 h-3.5"/>
+                    </a>
+                  </div>
+                )}
+
+                {(record.metadata as any).sapSyncError && (
+                  <p className="text-[10px] text-red-400 mt-2 bg-red-50/50 p-2 rounded border border-red-100 italic">
+                    Error: {(record.metadata as any).sapSyncError}
+                  </p>
+                )}
+              </div>
+            </Card>
+          )}
         </div>
       </div>
 

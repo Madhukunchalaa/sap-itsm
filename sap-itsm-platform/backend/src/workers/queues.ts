@@ -38,3 +38,13 @@ export const contractRenewalQueue = new Queue('contract-renewal', {
     backoff: { type: 'exponential', delay: 30000 },
   },
 });
+
+export const sapSyncQueue = new Queue('sap-sync', {
+  connection,
+  defaultJobOptions: {
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 60000 }, // Initial retry after 1 min
+    removeOnComplete: { count: 1000 },
+    removeOnFail: { count: 1000 },
+  },
+});

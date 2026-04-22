@@ -36,6 +36,11 @@ export function useRecord(id: string) {
     queryKey: ['record', id],
     queryFn: () => recordsApi.get(id).then((r) => r.data.record),
     enabled: !!id,
+    refetchInterval: (data) => {
+      // If we're waiting for SAP sync, poll every 3s
+      const syncStatus = (data as any)?.metadata?.sapSyncStatus;
+      return (syncStatus && syncStatus !== 'SUCCESS' && syncStatus !== 'FAILED') ? 3000 : false;
+    },
   });
 }
 

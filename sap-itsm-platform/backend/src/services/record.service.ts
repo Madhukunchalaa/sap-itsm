@@ -4,9 +4,9 @@ import { AppError } from '../utils/AppError';
 import { auditLog, diffObjects } from '../utils/audit';
 import { generateRecordNumber } from '../utils/recordNumber';
 import { buildPaginatedResult, paginate } from '../utils/pagination';
-import { emailQueue } from '../workers/queues';
-import { slaQueue } from '../workers/queues';
+import { emailQueue, slaQueue, sapSyncQueue } from '../workers/queues';
 import { calculateSLADeadline, isSLAApplicable } from './sla.service';
+import { sapConfig } from '../config/sap.config';
 import { notify, notifyCommentDirect, notifyMentions, extractMentionNames, notifyPMOnUpdate } from './notifications/notification.service';
 import { RecordStatus, RecordType, Priority, Prisma } from '@prisma/client';
 
@@ -241,6 +241,13 @@ export async function createRecord(input: CreateRecordInput) {
 
   if (slaTracking) {
     await slaQueue.add('sla-check', { recordId: record.id }, { delay: 60 * 1000 });
+  }
+
+  if (sapConfig.mirroringEnabled) {
+    await sapSyncQueue.add('mirror-ticket', {
+      ticketId: record.id,
+      triggeredBy: input.createdById,
+    });
   }
 
   return record;
