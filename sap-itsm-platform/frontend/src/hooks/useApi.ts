@@ -39,6 +39,14 @@ export function useRecord(id: string) {
   });
 }
 
+export function useResolvedTicketCount(userId: string) {
+  return useQuery({
+    queryKey: ['resolved-ticket-count', userId],
+    queryFn: () => recordsApi.list({ createdById: userId, status: ['RESOLVED'] as any, limit: 1 }).then((r) => r.data.pagination.total),
+    enabled: !!userId,
+  });
+}
+
 export function useCreateRecord() {
   const queryClient = useQueryClient();
   return useMutation({

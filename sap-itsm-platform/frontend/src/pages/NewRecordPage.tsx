@@ -91,19 +91,24 @@ export default function NewRecordPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    const record = await createRecord.mutateAsync({
-      recordType: form.recordType, title: form.title.trim(),
-      description: form.description.trim(), priority: form.priority,
-      customerId:      form.customerId      || undefined,
-      assignedAgentId: form.assignedAgentId || undefined,
-      sapModuleId:     form.sapModuleId     || undefined,
-      sapSubModuleId:  form.sapSubModuleId  || undefined,
-      tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
-    });
-    for (const file of attachments) {
-      await recordsApi.uploadAttachment(record.id, file);
+    try {
+      const record = await createRecord.mutateAsync({
+        recordType: form.recordType, title: form.title.trim(),
+        description: form.description.trim(), priority: form.priority,
+        customerId:      form.customerId      || undefined,
+        assignedAgentId: form.assignedAgentId || undefined,
+        sapModuleId:     form.sapModuleId     || undefined,
+        sapSubModuleId:  form.sapSubModuleId  || undefined,
+        tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
+      });
+      for (const file of attachments) {
+        await recordsApi.uploadAttachment(record.id, file);
+      }
+      navigate(`/records/${record.id}`);
+    } catch (err: any) {
+      // Logic removed as per user request to only show warning on entry points
+      alert(err?.response?.data?.error || 'Failed to create ticket');
     }
-    navigate(`/records/${record.id}`);
   };
 
   const customerList: any[] = customers?.data || [];

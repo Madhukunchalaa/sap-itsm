@@ -105,14 +105,25 @@ const RECORD_SELECT = {
 export async function createRecord(input: CreateRecordInput) {
   const recordNumber = await generateRecordNumber(input.tenantId, input.recordType);
 
-  // Auto-resolve customerId: if not provided, use the creating user's customerId
-  if (!input.customerId && input.createdById) {
-    const creator = await prisma.user.findUnique({
-      where: { id: input.createdById },
-      select: { customerId: true },
+  const creator = await prisma.user.findUnique({
+    where: { id: input.createdById },
+    select: { customerId: true, role: true },
+  });
+
+  if (!input.customerId && creator?.customerId) {
+    input.customerId = creator.customerId;
+  }
+
+  // Restriction for End Users: Block creation if 15+ RESOLVED tickets
+  if (creator?.role === 'USER') {
+    const resolvedCount = await prisma.iTSMRecord.count({
+      where: {
+        createdById: input.createdById,
+        status: 'RESOLVED'
+      }
     });
-    if (creator?.customerId) {
-      input.customerId = creator.customerId;
+    if (resolvedCount >= 15) {
+      throw new AppError('You have 15 or more resolved tickets. You have to change resolve to close in order to create a new one.', 403, 'RESTRICTION_LIMIT');
     }
   }
 

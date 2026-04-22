@@ -12,6 +12,8 @@ import { authApi } from '../../api/services';
 import { apiClient } from '../../api/client';
 import { formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
+import { useResolvedTicketCount } from '../../hooks/useApi';
+import { RestrictionModal } from '../records/RestrictionModal';
 
 /* ── nav structure ─────────────────────────────────────────────
    Top-level items that appear directly in the navbar.
@@ -164,6 +166,8 @@ export default function AppLayout() {
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const { user, refreshToken, logout } = useAuthStore();
   const navigate = useNavigate();
+  const { data: resolvedCount } = useResolvedTicketCount(user?.id || '');
+  const [restrictionModalOpen, setRestrictionModalOpen] = useState(false);
 
   const role = user?.role || '';
 
@@ -227,11 +231,23 @@ export default function AppLayout() {
         {/* Right: New Ticket + Bell + User */}
         <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
           <button
-            onClick={() => navigate('/records/new')}
+            onClick={() => {
+              if (user?.role === 'USER' && (resolvedCount || 0) >= 15) {
+                setRestrictionModalOpen(true);
+              } else {
+                navigate('/records/new');
+              }
+            }}
             className="flex items-center gap-1.5 bg-white text-indigo-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-indigo-50 transition-colors shadow-sm"
           >
             <Plus className="w-4 h-4" /> New Ticket
           </button>
+
+          <RestrictionModal 
+            open={restrictionModalOpen} 
+            onClose={() => setRestrictionModalOpen(false)} 
+            count={resolvedCount || 0} 
+          />
 
           <NotificationBell />
 

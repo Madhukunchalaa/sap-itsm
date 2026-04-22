@@ -4,6 +4,8 @@ import { Search, Filter, Plus, X, Download } from 'lucide-react';
 import { useRecords, useSapModules, useAgents } from '../hooks/useApi';
 import { DataTable, Column } from '../components/ui/DataTable';
 import { PriorityBadge, StatusBadge, TypeBadge, SLABadge } from '../components/ui/Badges';
+import { useResolvedTicketCount } from '../hooks/useApi';
+import { RestrictionModal } from '../components/records/RestrictionModal';
 import { PageHeader, Button } from '../components/ui/Forms';
 import { MultiSelectDropdown, MultiSelectOption } from '../components/ui/MultiSelectDropdown';
 import { formatDistanceToNow } from 'date-fns';
@@ -109,6 +111,8 @@ export default function RecordsPage() {
   } = useRecordFilterStore();
 
   const [exportLimit, setExportLimit] = React.useState('current');
+  const { data: resolvedCount } = useResolvedTicketCount(user?.id || '');
+  const [restrictionModalOpen, setRestrictionModalOpen] = React.useState(false);
 
   const { data, isLoading } = useRecords({
     ...filters,
@@ -318,10 +322,21 @@ export default function RecordsPage() {
                 <Download className="w-4 h-4" /> Export Excel
               </button>
             </div>
-            <Button onClick={() => navigate('/records/new')}>
+            <Button onClick={() => {
+              if (user?.role === 'USER' && (resolvedCount || 0) >= 15) {
+                setRestrictionModalOpen(true);
+              } else {
+                navigate('/records/new');
+              }
+            }}>
               <Plus className="w-4 h-4" />
               New Ticket
             </Button>
+            <RestrictionModal 
+              open={restrictionModalOpen} 
+              onClose={() => setRestrictionModalOpen(false)} 
+              count={resolvedCount || 0} 
+            />
           </div>
         }
       />
