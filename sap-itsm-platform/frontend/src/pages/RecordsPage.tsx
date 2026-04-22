@@ -11,6 +11,7 @@ import { recordsApi, RecordFilters } from '../api/services';
 import { useAuthStore } from '../store/auth.store';
 import { useRecordFilterStore } from '../store/record-filter.store';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
 
 // ── Static filter options ────────────────────────────────────
 const STATUS_OPTIONS: MultiSelectOption[] = [
@@ -126,7 +127,7 @@ export default function RecordsPage() {
     (selModule.length   > 0 ? 1 : 0) +
     (selAgent           ? 1 : 0);
 
-  const handleExportCSV = async () => {
+  const handleExportExcel = async () => {
     let records = data?.data || [];
 
     if (exportLimit !== 'current') {
@@ -157,23 +158,46 @@ export default function RecordsPage() {
       return;
     }
 
-    const headers = ['Record #','Type','Title','Priority','Status','Customer','Assigned Agent','Created By','SAP Module','Created','Updated'];
-    const rows = records.map((r: any) => [
-      r.recordNumber, r.recordType, `"${(r.title || '').replace(/"/g, '""')}"`,
-      r.priority, r.status,
-      r.customer?.companyName || '',
-      r.assignedAgent ? `${r.assignedAgent.user?.firstName} ${r.assignedAgent.user?.lastName}` : '',
-      r.createdBy ? `${r.createdBy.firstName} ${r.createdBy.lastName}` : '',
-      r.sapModule ? `${r.sapModule.code} - ${r.sapModule.name}` : '',
-      new Date(r.createdAt).toLocaleDateString(),
-      new Date(r.updatedAt).toLocaleDateString(),
-    ]);
-    const csv = [headers.join(','), ...rows.map((r: any[]) => r.join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `tickets-export-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click(); URL.revokeObjectURL(url);
+    // ── Prepare Data ──────────────────────────────────────────
+    const rows = records.map((r: any) => ({
+      'Record #':       r.recordNumber,
+      'Type':           r.recordType,
+      'Title':          r.title || '',
+      'Priority':       r.priority,
+      'Status':         r.status,
+      'Customer':       r.customer?.companyName || '',
+      'Assigned Agent': r.assignedAgent ? `${r.assignedAgent.user?.firstName} ${r.assignedAgent.user?.lastName}` : 'Unassigned',
+      'Created By':     r.createdBy ? `${r.createdBy.firstName} ${r.createdBy.lastName}` : '',
+      'SAP Module':     r.sapModule ? `${r.sapModule.code} - ${r.sapModule.name}` : '',
+      'Created':        new Date(r.createdAt).toLocaleDateString(),
+      'Updated':        new Date(r.updatedAt).toLocaleDateString(),
+    }));
+
+    // ── Create Worksheet ──────────────────────────────────────
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    // ── Format Columns ────────────────────────────────────────
+    const colWidths = [
+      { wch: 20 }, // Record #
+      { wch: 12 }, // Type
+      { wch: 45 }, // Title
+      { wch: 12 }, // Priority
+      { wch: 15 }, // Status
+      { wch: 25 }, // Customer
+      { wch: 20 }, // Assigned Agent
+      { wch: 20 }, // Created By
+      { wch: 25 }, // SAP Module
+      { wch: 15 }, // Created
+      { wch: 15 }, // Updated
+    ];
+    ws['!cols'] = colWidths;
+
+    // ── Create Workbook & Download ────────────────────────────
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Tickets');
+    
+    const filename = `tickets-export-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, filename);
   };
 
   // ── Columns ─────────────────────────────────────────────────
@@ -287,11 +311,11 @@ export default function RecordsPage() {
                 ))}
               </select>
               <button
-                onClick={handleExportCSV}
+                onClick={handleExportExcel}
                 className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-50 text-gray-600 hover:bg-gray-100 border-l border-gray-300 transition-colors text-sm font-medium"
-                title="Download CSV"
+                title="Download Excel"
               >
-                <Download className="w-4 h-4" /> Export
+                <Download className="w-4 h-4" /> Export Excel
               </button>
             </div>
             <Button onClick={() => navigate('/records/new')}>
