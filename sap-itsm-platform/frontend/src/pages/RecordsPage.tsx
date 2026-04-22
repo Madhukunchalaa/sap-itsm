@@ -7,9 +7,10 @@ import { PriorityBadge, StatusBadge, TypeBadge, SLABadge } from '../components/u
 import { PageHeader, Button } from '../components/ui/Forms';
 import { MultiSelectDropdown, MultiSelectOption } from '../components/ui/MultiSelectDropdown';
 import { formatDistanceToNow } from 'date-fns';
-import { RecordFilters } from '../api/services';
+import { recordsApi, RecordFilters } from '../api/services';
 import { useAuthStore } from '../store/auth.store';
 import { useRecordFilterStore } from '../store/record-filter.store';
+import toast from 'react-hot-toast';
 
 // ── Static filter options ────────────────────────────────────
 const STATUS_OPTIONS: MultiSelectOption[] = [
@@ -64,6 +65,15 @@ const SORT_OPTIONS = [
   { value: 'updatedAt_desc', label: 'Recently Updated' },
 ];
 
+const EXPORT_LIMIT_OPTIONS = [
+  { value: 'current', label: 'Current Page' },
+  { value: '100',     label: '1-100 Rows' },
+  { value: '200',     label: '200 Rows' },
+  { value: '300',     label: '300 Rows' },
+  { value: '500',     label: '500 Rows' },
+  { value: 'all',     label: 'All Rows' },
+];
+
 // ── Component ────────────────────────────────────────────────
 export default function RecordsPage() {
   const navigate = useNavigate();
@@ -97,6 +107,8 @@ export default function RecordsPage() {
     reset: clearFilters
   } = useRecordFilterStore();
 
+  const [exportLimit, setExportLimit] = React.useState('current');
+
   const { data, isLoading } = useRecords({
     ...filters,
     status:          selStatus.length   ? (selStatus as any)   : undefined,
@@ -114,9 +126,37 @@ export default function RecordsPage() {
     (selModule.length   > 0 ? 1 : 0) +
     (selAgent           ? 1 : 0);
 
-  const handleExportCSV = () => {
-    const records = data?.data || [];
-    if (records.length === 0) return;
+  const handleExportCSV = async () => {
+    let records = data?.data || [];
+
+    if (exportLimit !== 'current') {
+      const toastId = toast.loading(`Preparing export for ${exportLimit === 'all' ? 'all' : exportLimit} records...`);
+      try {
+        const limit = exportLimit === 'all' ? data?.pagination.total || 10000 : parseInt(exportLimit);
+        const response = await recordsApi.list({
+          ...filters,
+          status:          selStatus.length   ? (selStatus as any)   : undefined,
+          recordType:      selType.length     ? (selType as any)     : undefined,
+          priority:        selPriority.length ? (selPriority as any) : undefined,
+          sapModuleId:     selModule.length   ? (selModule as any)   : undefined,
+          assignedAgentId: selAgent           || undefined,
+          search:          search             || undefined,
+          limit,
+          page: 1,
+        });
+        records = response.data.data;
+        toast.success('Data ready for export', { id: toastId });
+      } catch (error) {
+        toast.error('Failed to fetch data for export', { id: toastId });
+        return;
+      }
+    }
+
+    if (records.length === 0) {
+      toast.error('No records to export');
+      return;
+    }
+
     const headers = ['Record #','Type','Title','Priority','Status','Customer','Assigned Agent','Created By','SAP Module','Created','Updated'];
     const rows = records.map((r: any) => [
       r.recordNumber, r.recordType, `"${(r.title || '').replace(/"/g, '""')}"`,
@@ -236,10 +276,24 @@ export default function RecordsPage() {
         subtitle={data ? `${data.pagination.total} total records` : ''}
         actions={
           <div className="flex gap-2">
-            <button onClick={handleExportCSV}
-              className="flex items-center gap-1.5 px-4 py-2.5 border border-gray-300 text-gray-600 hover:bg-gray-50 rounded-xl text-sm font-medium">
-              <Download className="w-4 h-4" />Export CSV
-            </button>
+            <div className="flex items-center border border-gray-300 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-500">
+              <select
+                value={exportLimit}
+                onChange={(e) => setExportLimit(e.target.value)}
+                className="pl-3 pr-1 py-2.5 text-sm font-medium text-gray-600 bg-white border-none focus:outline-none cursor-pointer"
+              >
+                {EXPORT_LIMIT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <button
+                onClick={handleExportCSV}
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-50 text-gray-600 hover:bg-gray-100 border-l border-gray-300 transition-colors text-sm font-medium"
+                title="Download CSV"
+              >
+                <Download className="w-4 h-4" /> Export
+              </button>
+            </div>
             <Button onClick={() => navigate('/records/new')}>
               <Plus className="w-4 h-4" />
               New Ticket
