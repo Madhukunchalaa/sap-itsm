@@ -25,4 +25,7 @@ RUN echo "OK" > /usr/share/nginx/html/health
 
 EXPOSE 80
 
-CMD ["nginx", "-g", "daemon off;"]
+# Default backend URL for local development
+ENV BACKEND_URL=http://itsm-backend:3001
+
+CMD ["sh", "-c", "sed -i \"s|http://itsm-backend:3001|${BACKEND_URL}|g\" /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
