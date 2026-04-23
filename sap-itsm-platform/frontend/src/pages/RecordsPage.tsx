@@ -347,7 +347,7 @@ export default function RecordsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setFilters((f) => ({ ...f, page: 1 })); }}
+            onChange={(e) => { setSearch(e.target.value); setFilters({ page: 1 }); }}
             placeholder="Search by title, number, description, module…"
             className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
@@ -392,7 +392,7 @@ export default function RecordsPage() {
             <MultiSelectDropdown
               options={STATUS_OPTIONS}
               selected={selStatus}
-              onChange={(v) => { setSelStatus(v); setFilters((f) => ({ ...f, page: 1 })); }}
+              onChange={(v) => { setSelStatus(v); setFilters({ page: 1 }); }}
               placeholder="All Statuses"
               colorMap={STATUS_COLORS}
             />
@@ -407,7 +407,7 @@ export default function RecordsPage() {
             <MultiSelectDropdown
               options={TYPE_OPTIONS}
               selected={selType}
-              onChange={(v) => { setSelType(v); setFilters((f) => ({ ...f, page: 1 })); }}
+              onChange={(v) => { setSelType(v); setFilters({ page: 1 }); }}
               placeholder="All Types"
             />
           </div>
@@ -421,7 +421,7 @@ export default function RecordsPage() {
             <MultiSelectDropdown
               options={PRIORITY_OPTIONS}
               selected={selPriority}
-              onChange={(v) => { setSelPriority(v); setFilters((f) => ({ ...f, page: 1 })); }}
+              onChange={(v) => { setSelPriority(v); setFilters({ page: 1 }); }}
               placeholder="All Priorities"
               colorMap={PRIORITY_COLORS}
             />
@@ -437,7 +437,7 @@ export default function RecordsPage() {
               <MultiSelectDropdown
                 options={moduleOptions}
                 selected={selModule}
-                onChange={(v) => { setSelModule(v); setFilters((f) => ({ ...f, page: 1 })); }}
+                onChange={(v) => { setSelModule(v); setFilters({ page: 1 }); }}
                 placeholder="All Modules"
               />
             </div>
