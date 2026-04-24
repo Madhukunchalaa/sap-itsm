@@ -91,6 +91,7 @@ app.get('/health', (_req, res) => {
 
 // ── API Routes ────────────────────────────────────────────────
 const API = '/api/v1';
+app.use('/auth', authRoutes); // Fallback for direct/legacy calls
 app.use(`${API}/auth`, authRoutes);
 app.use(`${API}/users`, userRoutes);
 app.use(`${API}/agents`, agentRoutes);
