@@ -91,7 +91,29 @@ app.get('/health', (_req, res) => {
 
 // ── API Routes ────────────────────────────────────────────────
 const API = '/api/v1';
-app.use('/auth', authRoutes); // Fallback for direct/legacy calls
+
+// Fallback for direct/legacy calls (without /api/v1)
+app.use('/auth', authRoutes);
+app.use('/users', userRoutes);
+app.use('/agents', agentRoutes);
+app.use('/customers', customerRoutes);
+app.use('/contracts', contractRoutes);
+app.use('/support-types', supportTypeRoutes);
+app.use('/records', recordRoutes);
+app.use('/cmdb', cmdbRoutes);
+app.use('/shifts', shiftRoutes);
+app.use('/holidays', holidayRoutes);
+app.use('/email-logs', emailLogRouter);
+app.use('/audit', auditRoutes);
+app.use('/dashboard', dashboardRoutes);
+app.use('/reports', reportRoutes);
+app.use('/notification-rules', notificationRuleRoutes);
+app.use('/notifications/inbox', notificationInboxRoutes);
+app.use('/sap-modules', sapModuleRoutes);
+app.use('/assignment-rules', assignmentRuleRoutes);
+app.use('/export', exportRoutes);
+
+// Standard Prefixed Routes
 app.use(`${API}/auth`, authRoutes);
 app.use(`${API}/users`, userRoutes);
 app.use(`${API}/agents`, agentRoutes);
@@ -111,6 +133,7 @@ app.use(`${API}/notifications/inbox`, notificationInboxRoutes);
 app.use(`${API}/sap-modules`, sapModuleRoutes);
 app.use(`${API}/assignment-rules`, assignmentRuleRoutes);
 app.use(`${API}/export`, exportRoutes);
+
 
 // ── Admin Endpoints (before error handlers!) ──────────────────
 app.post('/admin/fix-record-customers', async (_req, res) => {
