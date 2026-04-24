@@ -25,8 +25,7 @@ RUN echo "OK" > /usr/share/nginx/html/health
 
 EXPOSE 80
 
-CMD ["sh", "-c", "REAL_BACKEND_URL=${BACKEND_URL:-$PORTAL_URL}; \
-    if [ -z \"$REAL_BACKEND_URL\" ]; then echo \"ERROR: Neither BACKEND_URL nor PORTAL_URL is set.\"; exit 1; fi; \
-    case \"$REAL_BACKEND_URL\" in http://*|https://*) ;; *) REAL_BACKEND_URL=\"http://$REAL_BACKEND_URL\" ;; esac; \
-    sed -i \"s|http://itsm-backend:3001|${REAL_BACKEND_URL}|g\" /etc/nginx/conf.d/default.conf && \
+CMD ["sh", "-c", "if [ -z \"$BACKEND_URL\" ]; then echo \"ERROR: BACKEND_URL environment variable is not set.\"; exit 1; fi; \
+    case \"$BACKEND_URL\" in http://*|https://*) ;; *) BACKEND_URL=\"http://$BACKEND_URL\" ;; esac; \
+    sed -i \"s|http://itsm-backend:3001|${BACKEND_URL}|g\" /etc/nginx/conf.d/default.conf && \
     nginx -g 'daemon off;'"]
