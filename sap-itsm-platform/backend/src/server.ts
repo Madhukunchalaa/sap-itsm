@@ -7,6 +7,7 @@ import { redis } from './config/redis';
 import { startSLAWorker } from './workers/sla.worker';
 import { startEmailWorker } from './workers/email.worker';
 import { startEscalationWorker } from './workers/escalation.worker';
+import { startAIWorker } from './workers/ai.worker';
 import { seedDatabase } from './seed';
 import bcrypt from 'bcryptjs';
 
@@ -107,6 +108,7 @@ async function bootstrap() {
       startSLAWorker();
       startEmailWorker();
       startEscalationWorker();
+      startAIWorker();
       logger.info('✅ Workers started');
     } else {
       logger.info('ℹ️  Skipping Redis ping and Workers (NO_REDIS mode)');

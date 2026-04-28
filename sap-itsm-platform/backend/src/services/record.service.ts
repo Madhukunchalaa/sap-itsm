@@ -4,8 +4,7 @@ import { AppError } from '../utils/AppError';
 import { auditLog, diffObjects } from '../utils/audit';
 import { generateRecordNumber } from '../utils/recordNumber';
 import { buildPaginatedResult, paginate } from '../utils/pagination';
-import { emailQueue } from '../workers/queues';
-import { slaQueue } from '../workers/queues';
+import { emailQueue, slaQueue, aiQueue } from '../workers/queues';
 import { calculateSLADeadline, isSLAApplicable } from './sla.service';
 import { notify, notifyCommentDirect, notifyMentions, extractMentionNames, notifyPMOnUpdate } from './notifications/notification.service';
 import { RecordStatus, RecordType, Priority, Prisma } from '@prisma/client';
@@ -249,6 +248,11 @@ export async function createRecord(input: CreateRecordInput) {
   if (input.assignedAgentId) {
     notify({ event: 'ASSIGNED', recordId: record.id, tenantId: input.tenantId, triggeredBy: input.createdById }).catch(() => null);
   }
+
+  // AI Similarity & Solution Check
+  aiQueue.add('process-insights', { recordId: record.id, tenantId: input.tenantId }).catch(err => {
+    console.error('[AIQueue] Error adding job:', err);
+  });
 
   if (slaTracking) {
     await slaQueue.add('sla-check', { recordId: record.id }, { delay: 60 * 1000 });

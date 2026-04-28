@@ -38,3 +38,12 @@ export const contractRenewalQueue = new Queue('contract-renewal', {
     backoff: { type: 'exponential', delay: 30000 },
   },
 });
+
+export const aiQueue = new Queue('ai-processing', {
+  connection,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: { type: 'fixed', delay: 10000 },
+    removeOnComplete: { count: 100 },
+  },
+});

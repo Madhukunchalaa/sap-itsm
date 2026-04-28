@@ -200,6 +200,45 @@ export default function RecordDetailPage() {
             </div>
           </Card>
 
+          {record.metadata?.ai_suggestion && (
+            <Card className="bg-indigo-50 border-indigo-100 overflow-hidden">
+              <div className="p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
+                    <History className="w-4 h-4"/> 
+                  </div>
+                  <h3 className="text-sm font-bold text-indigo-900">Smart Solution Suggestion</h3>
+                  <span className="text-[10px] bg-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ml-auto">AI Agent</span>
+                </div>
+                <div className="text-sm text-indigo-800 bg-white/50 rounded-xl p-4 border border-indigo-100 leading-relaxed shadow-sm">
+                  {record.metadata.ai_suggestion}
+                </div>
+                <div className="mt-4 flex items-center justify-between">
+                  <p className="text-xs text-indigo-500 italic">Based on resolved ticket {record.metadata.ai_related_record}</p>
+                  <Button
+                    size="sm"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md"
+                    onClick={async () => {
+                      if (window.confirm("Great! Shall we close this ticket as resolved?")) {
+                        await updateRecord.mutateAsync({
+                          id: record.id,
+                          data: { status: 'CLOSED' }
+                        });
+                        await addComment.mutateAsync({
+                          recordId: record.id,
+                          text: "User resolved the issue using AI suggested solution.",
+                          internalFlag: false
+                        });
+                      }
+                    }}
+                  >
+                    This solved my issue
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
           <Card>
             <div className="p-4">
               <div className="flex items-center justify-between mb-3">
