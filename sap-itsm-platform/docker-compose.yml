@@ -110,6 +110,7 @@ services:
       PORTAL_URL:         ${PORTAL_URL}
       CORS_ORIGINS:       ${CORS_ORIGINS}
       LOG_LEVEL:          ${LOG_LEVEL}
+      GEMINI_API_KEY:     ${GEMINI_API_KEY}
     volumes:
       - backend_logs:/app/logs
     ports:
