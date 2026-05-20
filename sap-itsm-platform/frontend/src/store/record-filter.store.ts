@@ -21,6 +21,12 @@ interface RecordFilterState {
   search: string;
   showFilters: boolean;
   
+  // Date filter specialized state
+  dateFilterType: 'none' | 'day' | 'week' | 'month' | 'custom';
+  selectedDate: string;
+  customFromDate: string;
+  customToDate: string;
+
   // Table row selection
   selectedIds: string[];
 
@@ -31,6 +37,10 @@ interface RecordFilterState {
   setSelPriority: (priority: string[]) => void;
   setSelModule: (module: string[]) => void;
   setSelAgent: (agentId: string) => void;
+  setDateFilterType: (type: 'none' | 'day' | 'week' | 'month' | 'custom') => void;
+  setSelectedDate: (date: string) => void;
+  setCustomFromDate: (date: string) => void;
+  setCustomToDate: (date: string) => void;
   setSearch: (search: string) => void;
   setShowFilters: (show: boolean) => void;
   setSelectedIds: (ids: string[]) => void;
@@ -52,6 +62,10 @@ const initialState = {
   selAgent: '',
   search: '',
   showFilters: false,
+  dateFilterType: 'none' as const,
+  selectedDate: new Date().toISOString().split('T')[0],
+  customFromDate: new Date().toISOString().split('T')[0],
+  customToDate: new Date().toISOString().split('T')[0],
   selectedIds: [],
 };
 
@@ -68,6 +82,10 @@ export const useRecordFilterStore = create<RecordFilterState>()(
       setSelPriority: (selPriority) => set({ selPriority, filters: { ...initialState.filters, page: 1 } }),
       setSelModule: (selModule) => set({ selModule, filters: { ...initialState.filters, page: 1 } }),
       setSelAgent: (selAgent) => set({ selAgent, filters: { ...initialState.filters, page: 1 } }),
+      setDateFilterType: (dateFilterType) => set({ dateFilterType, filters: { ...initialState.filters, page: 1 } }),
+      setSelectedDate: (selectedDate) => set({ selectedDate, filters: { ...initialState.filters, page: 1 } }),
+      setCustomFromDate: (customFromDate) => set({ customFromDate, filters: { ...initialState.filters, page: 1 } }),
+      setCustomToDate: (customToDate) => set({ customToDate, filters: { ...initialState.filters, page: 1 } }),
 
       setSearch: (search) => set({ search, filters: { ...initialState.filters, page: 1 } }),
       setShowFilters: (showFilters) => set({ showFilters }),

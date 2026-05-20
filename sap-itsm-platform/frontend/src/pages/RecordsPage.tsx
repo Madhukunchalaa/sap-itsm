@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Filter, Plus, X, Download } from 'lucide-react';
+import { Search, Filter, Plus, X, Download, AlertCircle, Calendar, User, Layers, Activity, Tag, ArrowUpDown, SlidersHorizontal, Settings, ChevronDown, ChevronUp } from 'lucide-react';
 import { useRecords, useSapModules, useAgents } from '../hooks/useApi';
 import { DataTable, Column } from '../components/ui/DataTable';
 import { PriorityBadge, StatusBadge, TypeBadge, SLABadge } from '../components/ui/Badges';
@@ -13,6 +13,7 @@ import { recordsApi, RecordFilters } from '../api/services';
 import { useAuthStore } from '../store/auth.store';
 import { useRecordFilterStore } from '../store/record-filter.store';
 import toast from 'react-hot-toast';
+import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import * as XLSX from 'xlsx';
 
 // ── Static filter options ────────────────────────────────────
@@ -107,14 +108,107 @@ export default function RecordsPage() {
     search, setSearch,
     showFilters, setShowFilters,
     selectedIds, setSelectedIds, toggleSelectedId,
-    reset: clearFilters
+    reset: clearFilters,
+    dateFilterType, setDateFilterType,
+    selectedDate, setSelectedDate,
+    customFromDate, setCustomFromDate,
+    customToDate, setCustomToDate,
   } = useRecordFilterStore();
+
+  // ── Sanitize Persisted State (Migration / Cleanup) ─────────
+  React.useEffect(() => {
+    const validPriorities = ['P1', 'P2', 'P3', 'P4'];
+    const hasInvalid = selPriority.some(p => !validPriorities.includes(p));
+    if (hasInvalid) {
+      const sanitized = selPriority.filter(p => validPriorities.includes(p));
+      setSelPriority(sanitized);
+      setFilters({ page: 1 });
+    }
+  }, [selPriority, setSelPriority, setFilters]);
+
+  // ── Date Boundaries Calculation ───────────────────────────
+  let fromDate: string | undefined = undefined;
+  let toDate: string | undefined = undefined;
+
+  if (dateFilterType !== 'none') {
+    if (dateFilterType === 'custom' && customFromDate && customToDate) {
+      const [fY, fM, fD] = customFromDate.split('-').map(Number);
+      const [tY, tM, tD] = customToDate.split('-').map(Number);
+      const s = new Date(fY, fM - 1, fD, 0, 0, 0, 0);
+      const e = new Date(tY, tM - 1, tD, 23, 59, 59, 999);
+      fromDate = s.toISOString();
+      toDate = e.toISOString();
+    } else if (selectedDate) {
+      const [year, month, day] = selectedDate.split('-').map(Number);
+      const baseDate = new Date(year, month - 1, day);
+
+      if (dateFilterType === 'day') {
+        const s = new Date(year, month - 1, day, 0, 0, 0, 0);
+        const e = new Date(year, month - 1, day, 23, 59, 59, 999);
+        fromDate = s.toISOString();
+        toDate = e.toISOString();
+      } else if (dateFilterType === 'week') {
+        const dayOfWeek = baseDate.getDay();
+        const s = new Date(baseDate);
+        s.setDate(baseDate.getDate() - dayOfWeek);
+        s.setHours(0, 0, 0, 0);
+
+        const e = new Date(s);
+        e.setDate(s.getDate() + 6);
+        e.setHours(23, 59, 59, 999);
+
+        fromDate = s.toISOString();
+        toDate = e.toISOString();
+      } else if (dateFilterType === 'month') {
+        const s = new Date(year, month - 1, 1, 0, 0, 0, 0);
+        const e = new Date(year, month, 0, 23, 59, 59, 999);
+        fromDate = s.toISOString();
+        toDate = e.toISOString();
+      }
+    }
+  }
+
+  // ── Date Range Formatted Description ───────────────────────
+  const dateRangeDescription = React.useMemo(() => {
+    if (dateFilterType === 'none') return '';
+    const formatOpts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
+
+    if (dateFilterType === 'custom') {
+      if (!customFromDate || !customToDate) return '';
+      const [fY, fM, fD] = customFromDate.split('-').map(Number);
+      const [tY, tM, tD] = customToDate.split('-').map(Number);
+      const s = new Date(fY, fM - 1, fD);
+      const e = new Date(tY, tM - 1, tD);
+      return `${s.toLocaleDateString('en-US', formatOpts)} - ${e.toLocaleDateString('en-US', formatOpts)}`;
+    }
+
+    if (!selectedDate) return '';
+    const [year, month, day] = selectedDate.split('-').map(Number);
+    const baseDate = new Date(year, month - 1, day);
+
+    if (dateFilterType === 'day') {
+      return baseDate.toLocaleDateString('en-US', formatOpts);
+    } else if (dateFilterType === 'week') {
+      const dayOfWeek = baseDate.getDay();
+      const s = new Date(baseDate);
+      s.setDate(baseDate.getDate() - dayOfWeek);
+      const e = new Date(s);
+      e.setDate(s.getDate() + 6);
+      return `${s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${e.toLocaleDateString('en-US', formatOpts)}`;
+    } else if (dateFilterType === 'month') {
+      return baseDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    }
+    return '';
+  }, [dateFilterType, selectedDate, customFromDate, customToDate]);
 
   const [exportLimit, setExportLimit] = React.useState('current');
   const { data: resolvedCount } = useResolvedTicketCount(user?.id || '');
   const [restrictionModalOpen, setRestrictionModalOpen] = React.useState(false);
+  const [isDatePanelExpanded, setIsDatePanelExpanded] = React.useState(() => {
+    return dateFilterType !== 'none';
+  });
 
-  const { data, isLoading } = useRecords({
+  const { data, isLoading, isError, refetch } = useRecords({
     ...filters,
     status:          selStatus.length   ? (selStatus as any)   : undefined,
     recordType:      selType.length     ? (selType as any)     : undefined,
@@ -122,14 +216,33 @@ export default function RecordsPage() {
     sapModuleId:     selModule.length   ? (selModule as any)   : undefined,
     assignedAgentId: selAgent           || undefined,
     search:          search             || undefined,
+    from:            fromDate,
+    to:              toDate,
   });
+
+  if (isLoading) return <LoadingSpinner fullscreen label="Loading tickets…" />;
+
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 gap-4">
+        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+          <AlertCircle className="w-8 h-8 text-red-600" />
+        </div>
+        <p className="text-gray-500 font-medium">Failed to load tickets.</p>
+        <button onClick={() => refetch()} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+          Retry Connection
+        </button>
+      </div>
+    );
+  }
 
   const activeFilterCount =
     (selStatus.length   > 0 ? 1 : 0) +
     (selType.length     > 0 ? 1 : 0) +
     (selPriority.length > 0 ? 1 : 0) +
     (selModule.length   > 0 ? 1 : 0) +
-    (selAgent           ? 1 : 0);
+    (selAgent           ? 1 : 0) +
+    (dateFilterType !== 'none' ? 1 : 0);
 
   const handleExportExcel = async () => {
     let records = data?.data || [];
@@ -146,6 +259,8 @@ export default function RecordsPage() {
           sapModuleId:     selModule.length   ? (selModule as any)   : undefined,
           assignedAgentId: selAgent           || undefined,
           search:          search             || undefined,
+          from:            fromDate,
+          to:              toDate,
           limit,
           page: 1,
         });
@@ -382,12 +497,15 @@ export default function RecordsPage() {
 
       {/* Filter panel */}
       {showFilters && (
-        <div className={`grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200 ${canSeeModuleColumn && canFilterByAgent ? 'sm:grid-cols-6' : canSeeModuleColumn || canFilterByAgent ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 p-5 bg-white/70 backdrop-blur-xl rounded-2xl border border-slate-200/60 shadow-[0_8px_30px_rgb(0,0,0,0.02)] transition-all duration-300">
           {/* Status */}
           <div>
-            <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
-              Status
-              {selStatus.length > 0 && <span className="text-blue-600 font-semibold">{selStatus.length}</span>}
+            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+              <Activity className="w-3.5 h-3.5 text-slate-400" />
+              <span>Status</span>
+              {selStatus.length > 0 && (
+                <span className="ml-auto bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[10px] font-bold">{selStatus.length}</span>
+              )}
             </label>
             <MultiSelectDropdown
               options={STATUS_OPTIONS}
@@ -400,9 +518,12 @@ export default function RecordsPage() {
 
           {/* Type */}
           <div>
-            <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
-              Type
-              {selType.length > 0 && <span className="text-blue-600 font-semibold">{selType.length}</span>}
+            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-slate-400" />
+              <span>Type</span>
+              {selType.length > 0 && (
+                <span className="ml-auto bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[10px] font-bold">{selType.length}</span>
+              )}
             </label>
             <MultiSelectDropdown
               options={TYPE_OPTIONS}
@@ -414,9 +535,12 @@ export default function RecordsPage() {
 
           {/* Priority */}
           <div>
-            <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
-              Priority
-              {selPriority.length > 0 && <span className="text-blue-600 font-semibold">{selPriority.length}</span>}
+            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+              <Tag className="w-3.5 h-3.5 text-slate-400" />
+              <span>Priority</span>
+              {selPriority.length > 0 && (
+                <span className="ml-auto bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[10px] font-bold">{selPriority.length}</span>
+              )}
             </label>
             <MultiSelectDropdown
               options={PRIORITY_OPTIONS}
@@ -430,9 +554,12 @@ export default function RecordsPage() {
           {/* Module (admin/PM only) */}
           {canSeeModuleColumn && (
             <div>
-              <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
-                Module
-                {selModule.length > 0 && <span className="text-blue-600 font-semibold">{selModule.length}</span>}
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+                <Settings className="w-3.5 h-3.5 text-slate-400" />
+                <span>SAP Module</span>
+                {selModule.length > 0 && (
+                  <span className="ml-auto bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[10px] font-bold">{selModule.length}</span>
+                )}
               </label>
               <MultiSelectDropdown
                 options={moduleOptions}
@@ -446,35 +573,252 @@ export default function RecordsPage() {
           {/* Agent (SUPER_ADMIN / PM only) */}
           {canFilterByAgent && (
             <div>
-              <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
-                Agent
-                {selAgent && <span className="text-blue-600 font-semibold">1</span>}
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-slate-400" />
+                <span>Agent</span>
+                {selAgent && (
+                  <span className="ml-auto bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[10px] font-bold">1</span>
+                )}
               </label>
-              <select
-                value={selAgent}
-                onChange={(e) => setSelAgent(e.target.value)}
-                className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="">All Agents</option>
-                {agentOptions.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-              </select>
+              <div className="relative">
+                <select
+                  value={selAgent}
+                  onChange={(e) => setSelAgent(e.target.value)}
+                  className="w-full text-sm border border-slate-200/80 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white/50 text-slate-700 font-medium transition-all hover:bg-white"
+                >
+                  <option value="">All Agents</option>
+                  {agentOptions.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+                </select>
+              </div>
             </div>
           )}
 
           {/* Sort */}
           <div>
-            <label className="text-xs font-medium text-gray-500 mb-1.5 block">Sort By</label>
-            <select
-              value={sortValue}
-              onChange={(e) => {
-                const [by, order] = e.target.value.split('_');
-                setFilters({ sortBy: by, sortOrder: order as any, page: 1 });
-              }}
-              className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            >
-              {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+              <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+              <span>Sort By</span>
+            </label>
+            <div className="relative">
+              <select
+                value={sortValue}
+                onChange={(e) => {
+                  const [by, order] = e.target.value.split('_');
+                  setFilters({ sortBy: by, sortOrder: order as any, page: 1 });
+                }}
+                className="w-full text-sm border border-slate-200/80 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white/50 text-slate-700 font-medium transition-all hover:bg-white"
+              >
+                {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
           </div>
+
+          {/* Collapsible Date Filter Accordion */}
+          <div className="col-span-full mt-2 pt-2 border-t border-slate-100/80">
+            <button
+              type="button"
+              onClick={() => setIsDatePanelExpanded(!isDatePanelExpanded)}
+              className="w-full flex items-center justify-between py-2 px-3 rounded-xl hover:bg-slate-50 transition-colors text-left"
+            >
+              <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+                <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                <span>Date Filter Settings</span>
+                {dateFilterType !== 'none' && (
+                  <span className="ml-2 bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-[10px] font-bold border border-blue-100/50">
+                    Active: {dateFilterType.toUpperCase()} {dateRangeDescription ? `(${dateRangeDescription})` : ''}
+                  </span>
+                )}
+              </span>
+              {isDatePanelExpanded ? (
+                <ChevronUp className="w-4 h-4 text-slate-400" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-slate-400" />
+              )}
+            </button>
+
+            {isDatePanelExpanded && (
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-12 gap-4 items-end bg-slate-50/50 p-4 rounded-xl border border-slate-100 transition-all duration-300">
+                <div className="md:col-span-4 lg:col-span-3">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Range Mode</span>
+                    </span>
+                  </label>
+                  <div className="bg-slate-100/80 p-0.5 rounded-lg flex w-full">
+                    {[
+                      { value: 'none', label: 'None' },
+                      { value: 'day', label: 'Day' },
+                      { value: 'week', label: 'Week' },
+                      { value: 'month', label: 'Month' },
+                      { value: 'custom', label: 'Custom' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => {
+                          setDateFilterType(opt.value as any);
+                          setFilters({ page: 1 });
+                        }}
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md text-center transition-all ${
+                          dateFilterType === opt.value
+                            ? 'bg-white text-blue-600 shadow-[0_2px_4px_rgba(0,0,0,0.06)]'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="md:col-span-5 lg:col-span-5">
+                  {dateFilterType === 'custom' ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Start Date</span>
+                        <input
+                          type="date"
+                          value={customFromDate}
+                          onChange={(e) => {
+                            setCustomFromDate(e.target.value);
+                            setFilters({ page: 1 });
+                          }}
+                          className="w-full text-sm border border-slate-200/80 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white/50 text-slate-700 font-medium transition-all hover:bg-white"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">End Date</span>
+                        <input
+                          type="date"
+                          value={customToDate}
+                          onChange={(e) => {
+                            setCustomToDate(e.target.value);
+                            setFilters({ page: 1 });
+                          }}
+                          className="w-full text-sm border border-slate-200/80 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white/50 text-slate-700 font-medium transition-all hover:bg-white"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Reference Date</span>
+                      <input
+                        type="date"
+                        disabled={dateFilterType === 'none'}
+                        value={selectedDate}
+                        onChange={(e) => {
+                          setSelectedDate(e.target.value);
+                          if (dateFilterType === 'none') {
+                            setDateFilterType('day');
+                          }
+                          setFilters({ page: 1 });
+                        }}
+                        className={`w-full text-sm border border-slate-200/80 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white/50 text-slate-700 font-medium transition-all hover:bg-white ${
+                          dateFilterType === 'none' ? 'opacity-50 cursor-not-allowed bg-slate-50/50' : ''
+                        }`}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="md:col-span-3 lg:col-span-4">
+                  {dateFilterType !== 'none' && dateRangeDescription ? (
+                    <div>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Active Range Summary</span>
+                      <div className="text-sm font-semibold text-blue-600 bg-blue-50/60 border border-blue-100/80 px-4 py-2 rounded-xl flex items-center justify-between">
+                        <span className="truncate">{dateRangeDescription}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-400 italic px-2 py-3">
+                      Select a Range Mode to activate date filtering.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Active Filters Summary row */}
+          {activeFilterCount > 0 && (
+            <div className="col-span-1 sm:col-span-2 md:col-span-3 lg:col-span-4 xl:col-span-6 mt-2 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
+                <span>Active Filters:</span>
+              </span>
+              
+              {/* Status Tags */}
+              {selStatus.map((status) => (
+                <span key={status} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-600 rounded-full">
+                  <span>Status: {status}</span>
+                  <button onClick={() => { setSelStatus(selStatus.filter(s => s !== status)); setFilters({ page: 1 }); }} className="text-slate-400 hover:text-slate-600 ml-0.5">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+
+              {/* Type Tags */}
+              {selType.map((type) => (
+                <span key={type} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-600 rounded-full">
+                  <span>Type: {type}</span>
+                  <button onClick={() => { setSelType(selType.filter(t => t !== type)); setFilters({ page: 1 }); }} className="text-slate-400 hover:text-slate-600 ml-0.5">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+
+              {/* Priority Tags */}
+              {selPriority.map((priority) => (
+                <span key={priority} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-600 rounded-full">
+                  <span>Priority: {priority}</span>
+                  <button onClick={() => { setSelPriority(selPriority.filter(p => p !== priority)); setFilters({ page: 1 }); }} className="text-slate-400 hover:text-slate-600 ml-0.5">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+
+              {/* Module Tags */}
+              {selModule.map((moduleId) => {
+                const mod = moduleOptions.find(o => o.value === moduleId);
+                return (
+                  <span key={moduleId} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-600 rounded-full">
+                    <span>Module: {mod?.label || moduleId}</span>
+                    <button onClick={() => { setSelModule(selModule.filter(m => m !== moduleId)); setFilters({ page: 1 }); }} className="text-slate-400 hover:text-slate-600 ml-0.5">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                );
+              })}
+
+              {/* Agent Tag */}
+              {selAgent && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-600 rounded-full">
+                  <span>Agent: {agentOptions.find(o => o.value === selAgent)?.label || selAgent}</span>
+                  <button onClick={() => { setSelAgent(''); setFilters({ page: 1 }); }} className="text-slate-400 hover:text-slate-600 ml-0.5">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
+              {/* Date Filter Tag */}
+              {dateFilterType !== 'none' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-blue-50 border border-blue-100 text-blue-700 rounded-full shadow-sm">
+                  <span>Date: {dateFilterType.toUpperCase()} ({dateRangeDescription})</span>
+                  <button onClick={() => { setDateFilterType('none'); setFilters({ page: 1 }); }} className="text-blue-400 hover:text-blue-600 ml-0.5">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
+              <button
+                onClick={clearFilters}
+                className="ml-auto text-[11px] font-bold text-red-600 hover:text-red-700 transition-colors flex items-center gap-1 bg-red-50 hover:bg-red-100/80 px-2.5 py-1 rounded-full border border-red-100"
+              >
+                Clear All Filters
+              </button>
+            </div>
+          )}
         </div>
       )}
 
