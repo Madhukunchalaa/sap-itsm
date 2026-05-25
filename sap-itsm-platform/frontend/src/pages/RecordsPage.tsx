@@ -103,6 +103,7 @@ export default function RecordsPage() {
     selType, setSelType,
     selPriority, setSelPriority,
     selModule, setSelModule,
+    selPlant, setSelPlant,
     selAgent, setSelAgent,
     search, setSearch,
     showFilters, setShowFilters,
@@ -120,6 +121,7 @@ export default function RecordsPage() {
     recordType:      selType.length     ? (selType as any)     : undefined,
     priority:        selPriority.length ? (selPriority as any) : undefined,
     sapModuleId:     selModule.length   ? (selModule as any)   : undefined,
+    plant:           selPlant           || undefined,
     assignedAgentId: selAgent           || undefined,
     search:          search             || undefined,
   });
@@ -129,6 +131,7 @@ export default function RecordsPage() {
     (selType.length     > 0 ? 1 : 0) +
     (selPriority.length > 0 ? 1 : 0) +
     (selModule.length   > 0 ? 1 : 0) +
+    (selPlant           ? 1 : 0) +
     (selAgent           ? 1 : 0);
 
   const handleExportExcel = async () => {
@@ -467,6 +470,23 @@ export default function RecordsPage() {
               </select>
             </div>
           )}
+
+          {/* Plant */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
+              Plant
+              {selPlant && <span className="text-blue-600 font-semibold">1</span>}
+            </label>
+            <select
+              value={selPlant}
+              onChange={(e) => { setSelPlant(e.target.value); setFilters({ page: 1 }); }}
+              className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="">All Plants</option>
+              <option value="SEPC - 3121">SEPC - 3121</option>
+              <option value="TAQA - 2301">TAQA - 2301</option>
+            </select>
+          </div>
 
           {/* Sort */}
           <div>

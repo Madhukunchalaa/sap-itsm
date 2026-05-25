@@ -13,6 +13,7 @@ export const createRecordSchema = z.object({
     parentProblemId: z.string().uuid().optional(),
     sapModuleId: z.string().uuid().nullable().optional(),
     sapSubModuleId: z.string().uuid().nullable().optional(),
+    plant: z.string().nullable().optional(),
     tags: z.array(z.string()).default([]),
     metadata: z.record(z.unknown()).optional(),
   }),
@@ -31,6 +32,7 @@ export const updateRecordSchema = z.object({
     ciId: z.string().uuid().nullable().optional(),
     sapModuleId: z.string().uuid().nullable().optional(),
     sapSubModuleId: z.string().uuid().nullable().optional(),
+    plant: z.string().nullable().optional(),
     tags: z.array(z.string()).optional(),
     metadata: z.record(z.unknown()).optional(),
   }),
@@ -66,6 +68,7 @@ export const listRecordsSchema = z.object({
         z.array(z.string().uuid()),
       ])
       .optional(),
+    plant: z.string().optional(),
     search: z.string().max(200).optional(),
     sortBy: z
       .enum(['createdAt', 'updatedAt', 'priority', 'status', 'recordNumber'])

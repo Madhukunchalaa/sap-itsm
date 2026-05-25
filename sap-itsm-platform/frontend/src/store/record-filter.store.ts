@@ -16,6 +16,7 @@ interface RecordFilterState {
   selType: string[];
   selPriority: string[];
   selModule: string[];
+  selPlant: string;
   selAgent: string;
   
   search: string;
@@ -30,6 +31,7 @@ interface RecordFilterState {
   setSelType: (type: string[]) => void;
   setSelPriority: (priority: string[]) => void;
   setSelModule: (module: string[]) => void;
+  setSelPlant: (plant: string) => void;
   setSelAgent: (agentId: string) => void;
   setSearch: (search: string) => void;
   setShowFilters: (show: boolean) => void;
@@ -49,6 +51,7 @@ const initialState = {
   selType: [],
   selPriority: [],
   selModule: [],
+  selPlant: '',
   selAgent: '',
   search: '',
   showFilters: false,
@@ -67,6 +70,7 @@ export const useRecordFilterStore = create<RecordFilterState>()(
       setSelType: (selType) => set({ selType, filters: { ...initialState.filters, page: 1 } }),
       setSelPriority: (selPriority) => set({ selPriority, filters: { ...initialState.filters, page: 1 } }),
       setSelModule: (selModule) => set({ selModule, filters: { ...initialState.filters, page: 1 } }),
+      setSelPlant: (selPlant) => set({ selPlant, filters: { ...initialState.filters, page: 1 } }),
       setSelAgent: (selAgent) => set({ selAgent, filters: { ...initialState.filters, page: 1 } }),
 
       setSearch: (search) => set({ search, filters: { ...initialState.filters, page: 1 } }),

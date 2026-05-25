@@ -586,6 +586,12 @@ export default function RecordDetailPage() {
                   )}
                 </div>
               )}
+              {record.plant && (
+                <div>
+                  <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Plant</label>
+                  <p className="text-sm text-gray-900 mt-1">{record.plant}</p>
+                </div>
+              )}
 
               <div className="border-t border-gray-100 pt-3 space-y-2">
                 {record.createdBy && (

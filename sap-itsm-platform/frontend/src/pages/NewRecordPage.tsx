@@ -30,7 +30,7 @@ export default function NewRecordPage() {
     recordType: 'INCIDENT', title: '', description: '',
     priority: 'P3', customerId: '',
     assignedAgentId: '', tags: '',
-    sapModuleId: '', sapSubModuleId: '',
+    sapModuleId: '', sapSubModuleId: '', plant: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [attachments, setAttachments] = useState<File[]>([]);
@@ -99,6 +99,7 @@ export default function NewRecordPage() {
         assignedAgentId: form.assignedAgentId || undefined,
         sapModuleId:     form.sapModuleId     || undefined,
         sapSubModuleId:  form.sapSubModuleId  || undefined,
+        plant:           form.plant || undefined,
         tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
       });
       for (const file of attachments) {
@@ -127,6 +128,17 @@ export default function NewRecordPage() {
             <div className="grid grid-cols-2 gap-4">
               <Select label="Record Type" value={form.recordType} onChange={e => set('recordType', e.target.value)} options={TYPE_OPTIONS}/>
               <Select label="Priority" value={form.priority} onChange={e => set('priority', e.target.value)} options={PRIORITY_OPTIONS}/>
+            </div>
+
+            {/* Plant */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Select Plant</label>
+              <select value={form.plant} onChange={e => set('plant', e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                <option value="">— Select Plant —</option>
+                <option value="SEPC - 3121">SEPC - 3121</option>
+                <option value="TAQA - 2301">TAQA - 2301</option>
+              </select>
             </div>
 
             {/* SAP Module / Sub-Module */}

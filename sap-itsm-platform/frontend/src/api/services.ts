@@ -33,6 +33,7 @@ export interface RecordFilters {
   assignedAgentId?: string;
   customerId?: string;
   sapModuleId?: string | string[];
+  plant?: string;
   search?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';

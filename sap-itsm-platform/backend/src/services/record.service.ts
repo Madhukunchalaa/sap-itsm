@@ -22,6 +22,7 @@ export interface CreateRecordInput {
   parentProblemId?: string;
   sapModuleId?: string;
   sapSubModuleId?: string;
+  plant?: string;
   tags?: string[];
   metadata?: Record<string, unknown>;
   tenantId: string;
@@ -44,6 +45,7 @@ export interface ListRecordsInput {
   createdById?: string;     // USER role: scope to own tickets only
   sapModuleId?: string;     // filter by SAP module
   sapModuleIdIn?: string[];
+  plant?: string;
   search?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
@@ -66,6 +68,7 @@ const RECORD_SELECT = {
   ciId: true,
   parentProblemId: true,
   tags: true,
+  plant: true,
   sapModuleId: true,
   sapSubModuleId: true,
   metadata: true,
@@ -225,6 +228,7 @@ export async function createRecord(input: CreateRecordInput) {
       parentProblemId: input.parentProblemId,
       sapModuleId:     input.sapModuleId || null,
       sapSubModuleId:  input.sapSubModuleId || null,
+      plant:           input.plant || null,
       tags:            input.tags || [],
       metadata:        (input.metadata || {}) as any,
       createdById:     input.createdById,
@@ -274,6 +278,7 @@ export async function listRecords(input: ListRecordsInput) {
     ...(input.createdById      && { createdById: input.createdById }),
     ...(input.sapModuleId      && { sapModuleId: input.sapModuleId }),
     ...(input.sapModuleIdIn?.length && { sapModuleId: { in: input.sapModuleIdIn } }),
+    ...(input.plant            && { plant: input.plant }),
     ...(input.search && {
       OR: [
         { title:        { contains: input.search, mode: 'insensitive' } },

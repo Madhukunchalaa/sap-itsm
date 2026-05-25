@@ -425,6 +425,7 @@ model ITSMRecord {
   parentProblemId String?             @map("parent_problem_id")
   createdById     String              @map("created_by")
   tags            String[]            @default([])
+  plant           String?             @map("plant")
   sapModuleId     String?             @map("sap_module_id")
   sapSubModuleId  String?             @map("sap_sub_module_id")
   metadata        Json?               @default("{}")
