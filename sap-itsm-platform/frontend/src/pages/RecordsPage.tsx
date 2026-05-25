@@ -282,11 +282,18 @@ export default function RecordsPage() {
       key: 'createdAt',
       header: 'Created',
       render: (row) => (
-        <span className="text-xs text-gray-400">
-          {formatDistanceToNow(new Date(row.createdAt), { addSuffix: true })}
-        </span>
+        <div className="flex flex-col">
+          <span className="text-xs text-gray-400">
+            {formatDistanceToNow(new Date(row.createdAt), { addSuffix: true })}
+          </span>
+          {row.createdBy && (
+            <span className="text-xs text-gray-500 font-medium truncate mt-0.5" title={`${row.createdBy.firstName} ${row.createdBy.lastName}`}>
+              by {row.createdBy.firstName} {row.createdBy.lastName}
+            </span>
+          )}
+        </div>
       ),
-      className: 'w-32',
+      className: 'w-40',
     },
   ];
 
