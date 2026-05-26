@@ -604,8 +604,12 @@ export default function RecordDetailPage() {
                   <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Plant</label>
                   <div className="mt-1.5">
                     {editMode
-                      ? <input value={editedPlant} onChange={e=>setEditedPlant(e.target.value)} placeholder="e.g. Plant 1234"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"/>
+                      ? <select value={editedPlant} onChange={e=>setEditedPlant(e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                          <option value="">— Select Plant —</option>
+                          <option value="SEPC - 3121">SEPC - 3121</option>
+                          <option value="TAQA - 2301">TAQA - 2301</option>
+                        </select>
                       : <p className="text-sm text-gray-900 mt-1">{record.plant}</p>
                     }
                   </div>
