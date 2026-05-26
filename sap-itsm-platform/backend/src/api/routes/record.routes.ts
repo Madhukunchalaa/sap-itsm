@@ -193,8 +193,8 @@ router.post('/:id/close', async (req: Request, res: Response, next: NextFunction
     if (!record) { res.status(404).json({ success: false, error: 'Not found' }); return; }
 
     // End users can only close tickets they created, and only when RESOLVED
-    if (role === 'END_USER') {
-      if (record.createdBy !== req.user!.sub) {
+    if (role === 'USER') {
+      if (record.createdById !== req.user!.sub) {
         res.status(403).json({ success: false, error: 'Access denied' }); return;
       }
       if (!['RESOLVED', 'OPEN', 'IN_PROGRESS', 'PENDING', 'AWAITING_CUSTOMER'].includes(record.status)) {

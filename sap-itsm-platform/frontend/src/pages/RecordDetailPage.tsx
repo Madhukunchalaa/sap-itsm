@@ -89,7 +89,7 @@ export default function RecordDetailPage() {
   const canSeeInternal = ['SUPER_ADMIN', 'AGENT'].includes(user?.role||'');
   const isAgent = ['SUPER_ADMIN','COMPANY_ADMIN','AGENT','PROJECT_MANAGER'].includes(user?.role||'');
   const canLogTime = ['SUPER_ADMIN','AGENT','PROJECT_MANAGER'].includes(user?.role||'');
-  const isEndUser = user?.role === 'END_USER';
+  const isEndUser = user?.role === 'USER';
   const canClose = isEndUser && !['CLOSED','CANCELLED'].includes(record.status);
 
   const handleEnterEdit = () => {
