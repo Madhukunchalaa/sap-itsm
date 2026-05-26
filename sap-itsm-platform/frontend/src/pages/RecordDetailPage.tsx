@@ -62,6 +62,7 @@ export default function RecordDetailPage() {
   const [editedTitle, setEditedTitle] = useState('');
   const [editedDescription, setEditedDescription] = useState('');
   const [editedAgentId, setEditedAgentId] = useState('');
+  const [editedPlant, setEditedPlant] = useState('');
   const [saving, setSaving] = useState(false);
   const [attachments, setAttachments] = useState<any[]>([]);
   const [attachmentsLoaded, setAttachmentsLoaded] = useState(false);
@@ -98,6 +99,7 @@ export default function RecordDetailPage() {
     setEditedTitle(record.title);
     setEditedDescription(record.description);
     setEditedAgentId(record.assignedAgent?.id || '');
+    setEditedPlant(record.plant || '');
     setEditMode(true);
   };
 
@@ -112,6 +114,7 @@ export default function RecordDetailPage() {
       if (editedTitle !== record.title) updates.title = editedTitle;
       if (editedDescription !== record.description) updates.description = editedDescription;
       if (editedAgentId !== (record.assignedAgent?.id||'')) updates.assignedAgentId = editedAgentId || null;
+      if (editedPlant !== (record.plant||'')) updates.plant = editedPlant || null;
       if (Object.keys(updates).length > 0) {
         await updateRecord.mutateAsync({ id: record.id, data: updates });
       }
@@ -596,10 +599,16 @@ export default function RecordDetailPage() {
                   )}
                 </div>
               )}
-              {record.plant && (
+              {(record.plant || editMode) && (
                 <div>
                   <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Plant</label>
-                  <p className="text-sm text-gray-900 mt-1">{record.plant}</p>
+                  <div className="mt-1.5">
+                    {editMode
+                      ? <input value={editedPlant} onChange={e=>setEditedPlant(e.target.value)} placeholder="e.g. Plant 1234"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"/>
+                      : <p className="text-sm text-gray-900 mt-1">{record.plant}</p>
+                    }
+                  </div>
                 </div>
               )}
 
