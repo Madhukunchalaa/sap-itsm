@@ -18,7 +18,7 @@ RUN npm run build
 FROM nginx:1.25-alpine AS production
 
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 # Add health check endpoint
 RUN echo "OK" > /usr/share/nginx/html/health
@@ -26,7 +26,5 @@ RUN echo "OK" > /usr/share/nginx/html/health
 # Limit worker_processes to 1 to avoid spawning too many processes on high-core hosts
 RUN sed -i -E 's/worker_processes.*/worker_processes 1;/' /etc/nginx/nginx.conf
 
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
+ENV PORT=80
 
