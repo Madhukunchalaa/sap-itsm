@@ -26,6 +26,6 @@ RUN echo "OK" > /usr/share/nginx/html/health
 # Limit worker_processes to 1 to avoid spawning too many processes on high-core hosts
 RUN sed -i -E 's/worker_processes.*/worker_processes 1;/' /etc/nginx/nginx.conf
 
-EXPOSE 80
+ENV PORT=80
 
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["/bin/sh", "-c", "envsubst '${PORT}' < /etc/nginx/conf.d/default.conf > /etc/nginx/conf.d/default.conf.tmp && mv /etc/nginx/conf.d/default.conf.tmp /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
