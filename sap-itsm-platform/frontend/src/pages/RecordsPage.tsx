@@ -485,6 +485,7 @@ export default function RecordsPage() {
               <option value="">All Plants</option>
               <option value="SEPC - 3121">SEPC - 3121</option>
               <option value="TAQA - 2301">TAQA - 2301</option>
+              <option value="2121 - Anpara">2121 - Anpara</option>
             </select>
           </div>
 

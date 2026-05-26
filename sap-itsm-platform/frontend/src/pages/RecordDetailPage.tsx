@@ -609,6 +609,7 @@ export default function RecordDetailPage() {
                           <option value="">— Select Plant —</option>
                           <option value="SEPC - 3121">SEPC - 3121</option>
                           <option value="TAQA - 2301">TAQA - 2301</option>
+                          <option value="2121 - Anpara">2121 - Anpara</option>
                         </select>
                       : <p className="text-sm text-gray-900 mt-1">{record.plant}</p>
                     }
