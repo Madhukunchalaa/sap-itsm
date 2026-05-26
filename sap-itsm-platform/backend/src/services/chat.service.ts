@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import Anthropic from '@anthropic-ai/sdk';
 import { createRecord, getRecord, listRecords, addComment } from './record.service';
 import { AppError } from '../utils/AppError';
@@ -27,12 +27,12 @@ export async function processChatMessage(
             name: 'create_ticket',
             description: 'Create a new ITSM ticket (Incident, Problem, or Change Request).',
             parameters: {
-              type: SchemaType.OBJECT,
+              type: "object",
               properties: {
-                title: { type: SchemaType.STRING, description: 'Short summary of the issue' },
-                description: { type: SchemaType.STRING, description: 'Detailed description' },
-                recordType: { type: SchemaType.STRING, enum: ['INCIDENT', 'PROBLEM', 'CHANGE_REQUEST'], description: 'Type of ticket' } as any,
-                priority: { type: SchemaType.STRING, enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], description: 'Urgency of the issue' } as any,
+                title: { type: "string", description: 'Short summary of the issue' },
+                description: { type: "string", description: 'Detailed description' },
+                recordType: { type: "string", enum: ['INCIDENT', 'PROBLEM', 'CHANGE_REQUEST'], description: 'Type of ticket' } as any,
+                priority: { type: "string", enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], description: 'Urgency of the issue' } as any,
               },
               required: ['title', 'description', 'recordType', 'priority'],
             } as any,
@@ -41,9 +41,9 @@ export async function processChatMessage(
             name: 'get_ticket_status',
             description: 'Retrieve the current status and details of a specific ticket by its ID or ticket number.',
             parameters: {
-              type: SchemaType.OBJECT,
+              type: "object",
               properties: {
-                ticketId: { type: SchemaType.STRING, description: 'The UUID or Record Number (e.g., INC-2024-001) of the ticket' },
+                ticketId: { type: "string", description: 'The UUID or Record Number (e.g., INC-2024-001) of the ticket' },
               },
               required: ['ticketId'],
             } as any,
@@ -52,9 +52,9 @@ export async function processChatMessage(
             name: 'list_my_tickets',
             description: 'List all tickets created by the current user.',
             parameters: {
-              type: SchemaType.OBJECT,
+              type: "object",
               properties: {
-                limit: { type: SchemaType.NUMBER, description: 'Maximum number of tickets to return (default 5)' },
+                limit: { type: "number", description: 'Maximum number of tickets to return (default 5)' },
               },
             } as any,
           },
@@ -62,10 +62,10 @@ export async function processChatMessage(
             name: 'add_comment',
             description: 'Add a comment to an existing ticket.',
             parameters: {
-              type: SchemaType.OBJECT,
+              type: "object",
               properties: {
-                ticketId: { type: SchemaType.STRING, description: 'The UUID of the ticket' },
-                text: { type: SchemaType.STRING, description: 'The comment text' },
+                ticketId: { type: "string", description: 'The UUID of the ticket' },
+                text: { type: "string", description: 'The comment text' },
               },
               required: ['ticketId', 'text'],
             } as any,
@@ -74,9 +74,9 @@ export async function processChatMessage(
             name: 'list_agents',
             description: 'List all available support agents and their specializations.',
             parameters: {
-              type: SchemaType.OBJECT,
+              type: "object",
               properties: {
-                level: { type: SchemaType.STRING, enum: ['L1', 'L2', 'L3', 'SPECIALIST'], description: 'Filter by agent level' } as any,
+                level: { type: "string", enum: ['L1', 'L2', 'L3', 'SPECIALIST'], description: 'Filter by agent level' } as any,
               },
             } as any,
           },
