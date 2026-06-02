@@ -35,7 +35,7 @@ export default function DashboardPage() {
   const { user } = useAuthStore();
   const role = user?.role;
 
-  if (role === 'PROJECT_MANAGER') return <PMDashboard />;
+  // if (role === 'PROJECT_MANAGER') return <PMDashboard />; // Now PM uses AdminDashboard
   if (role === 'COMPANY_ADMIN') return <CustomerDashboard />;
   if (role === 'AGENT') return <AgentDashboard />;
   if (role === 'USER') return <UserDashboard />;
