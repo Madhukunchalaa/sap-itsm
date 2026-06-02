@@ -31,6 +31,7 @@ export interface RecordFilters {
   status?: string | string[];
   priority?: string | string[];
   assignedAgentId?: string;
+  createdById?: string;
   customerId?: string;
   sapModuleId?: string | string[];
   plant?: string;

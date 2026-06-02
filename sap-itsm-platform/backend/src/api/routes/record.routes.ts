@@ -47,6 +47,7 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
       case 'COMPANY_ADMIN': {
         if (!req.user!.customerId) { res.json(EMPTY); return; }
         customerId = req.user!.customerId;
+        if (q.createdById) createdById = q.createdById;
         break;
       }
       case 'PROJECT_MANAGER': {
@@ -55,6 +56,7 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
         const ids = await resolveManagedCustomerIds(agent.id, req.user!.tenantId);
         if (ids.length === 0) { res.json(EMPTY); return; }
         customerIdIn = ids;
+        if (q.createdById) createdById = q.createdById;
         break;
       }
       case 'USER': {
@@ -65,11 +67,13 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
         const agent = await resolveAgent(req.user!.sub);
         if (!agent) { res.json(EMPTY); return; }
         assignedAgentId = agent.id;
+        if (q.createdById) createdById = q.createdById;
         break;
       }
       // SUPER_ADMIN / PROJECT_MANAGER: allow optional agent filter from query
       default: {
         if (q.assignedAgentId) assignedAgentId = q.assignedAgentId;
+        if (q.createdById) createdById = q.createdById;
         break;
       }
     }

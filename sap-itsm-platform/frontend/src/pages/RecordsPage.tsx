@@ -96,6 +96,13 @@ export default function RecordsPage() {
     label: `${a.user.firstName} ${a.user.lastName}`,
   }));
 
+  const canFilterByCreator = user?.role !== 'USER';
+  const { data: usersData } = useUsers(canFilterByCreator ? { limit: 500 } : undefined);
+  const creatorOptions: MultiSelectOption[] = (usersData?.data || []).map((u: any) => ({
+    value: u.id,
+    label: `${u.firstName} ${u.lastName}`,
+  }));
+
   // ── State from Store ───────────────────────────────────────
   const {
     filters, setFilters,
@@ -105,6 +112,7 @@ export default function RecordsPage() {
     selModule, setSelModule,
     selPlant, setSelPlant,
     selAgent, setSelAgent,
+    selCreator, setSelCreator,
     search, setSearch,
     showFilters, setShowFilters,
     selectedIds, setSelectedIds, toggleSelectedId,
@@ -123,6 +131,7 @@ export default function RecordsPage() {
     sapModuleId:     selModule.length   ? (selModule as any)   : undefined,
     plant:           selPlant           || undefined,
     assignedAgentId: selAgent           || undefined,
+    createdById:     selCreator         || undefined,
     search:          search             || undefined,
   });
 
@@ -132,7 +141,8 @@ export default function RecordsPage() {
     (selPriority.length > 0 ? 1 : 0) +
     (selModule.length   > 0 ? 1 : 0) +
     (selPlant           ? 1 : 0) +
-    (selAgent           ? 1 : 0);
+    (selAgent           ? 1 : 0) +
+    (selCreator         ? 1 : 0);
 
   const handleExportExcel = async () => {
     let records = data?.data || [];
@@ -148,6 +158,7 @@ export default function RecordsPage() {
           priority:        selPriority.length ? (selPriority as any) : undefined,
           sapModuleId:     selModule.length   ? (selModule as any)   : undefined,
           assignedAgentId: selAgent           || undefined,
+          createdById:     selCreator         || undefined,
           search:          search             || undefined,
           limit,
           page: 1,
@@ -467,6 +478,24 @@ export default function RecordsPage() {
               >
                 <option value="">All Agents</option>
                 {agentOptions.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* Created By */}
+          {canFilterByCreator && (
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
+                Created By
+                {selCreator && <span className="text-blue-600 font-semibold">1</span>}
+              </label>
+              <select
+                value={selCreator}
+                onChange={(e) => { setSelCreator(e.target.value); setFilters({ page: 1 }); }}
+                className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="">All Users</option>
+                {creatorOptions.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
             </div>
           )}
