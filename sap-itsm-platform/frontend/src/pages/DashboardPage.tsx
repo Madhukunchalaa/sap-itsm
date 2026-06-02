@@ -14,7 +14,22 @@ import { PriorityBadge, StatusBadge, TypeBadge, SLABadge } from '../components/u
 import { formatDistanceToNow, format } from 'date-fns';
 import { useAuthStore } from '../store/auth.store';
 
-const PIE_COLORS = ['#3b82f6','#f59e0b','#8b5cf6','#10b981','#ef4444','#6b7280'];
+const PIE_COLORS = ['#3b82f6','#ef4444','#f59e0b','#10b981','#8b5cf6','#6b7280'];
+
+const RADIAN = Math.PI / 180;
+const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
+  if (percent < 0.05) return null; // Don't show label if less than 5%
+  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+  return (
+    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight="bold">
+      {`${(percent * 100).toFixed(0)}%`}
+    </text>
+  );
+};
+
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
@@ -142,11 +157,11 @@ function AdminDashboard() {
           <div className="p-4">
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
-                <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80}>
+                <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
                   {statusData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                 </Pie>
                 <Tooltip />
-                <Legend />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -158,11 +173,11 @@ function AdminDashboard() {
             {moduleData.length > 0 ? (
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
-                  <Pie data={moduleData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80}>
+                  <Pie data={moduleData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
                     {moduleData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                   </Pie>
                 <Tooltip />
-                <Legend />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
               </PieChart>
               </ResponsiveContainer>
             ) : (
@@ -181,11 +196,11 @@ function AdminDashboard() {
               {plantData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
-                    <Pie data={plantData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80}>
+                    <Pie data={plantData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
                       {plantData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                     </Pie>
                 <Tooltip />
-                <Legend />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
               </PieChart>
                 </ResponsiveContainer>
               ) : (
@@ -200,12 +215,12 @@ function AdminDashboard() {
           <div className="p-4">
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
-                <Pie data={typeData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80}>
+                <Pie data={typeData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
                   {typeData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                 </Pie>
                 <Tooltip />
-                <Legend />
-               <Legend />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
+               <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -222,7 +237,7 @@ function AdminDashboard() {
                 <XAxis dataKey="day" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip />
-                <Legend />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
                 <Line type="monotone" dataKey="total"    stroke="#3b82f6" strokeWidth={2} dot={false} name="Created" />
                 <Line type="monotone" dataKey="resolved" stroke="#10b981" strokeWidth={2} dot={false} name="Resolved" />
               </LineChart>
@@ -322,7 +337,7 @@ function PMDashboard() {
           <div className="p-4"><ResponsiveContainer width="100%" height={200}>
             <BarChart data={customerChartData} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="name" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 11 }} /><Tooltip /><Legend />
+              <XAxis dataKey="name" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 11 }} /><Tooltip /><Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
               <Bar dataKey="open" fill="#3b82f6" name="Open" radius={[4,4,0,0]} />
               <Bar dataKey="breaches" fill="#ef4444" name="Breaches" radius={[4,4,0,0]} />
             </BarChart>
@@ -331,11 +346,11 @@ function PMDashboard() {
         <Card title="Module Heat Map (30d)">
           <div className="p-4"><ResponsiveContainer width="100%" height={200}>
             <PieChart>
-              <Pie data={moduleData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80}>
+              <Pie data={moduleData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
                 {moduleData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
               </Pie>
                 <Tooltip />
-                <Legend />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
               </PieChart>
           </ResponsiveContainer></div>
         </Card>
@@ -436,11 +451,11 @@ function CustomerDashboard() {
         <Card title="By SAP Module">
           <div className="p-4"><ResponsiveContainer width="100%" height={200}>
             <PieChart>
-              <Pie data={moduleData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80}>
+              <Pie data={moduleData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
                 {moduleData.map((_:any, i:number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
               </Pie>
                 <Tooltip />
-                <Legend />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
               </PieChart>
           </ResponsiveContainer></div>
         </Card>
@@ -523,11 +538,11 @@ function AgentDashboard() {
         <Card title="Status Breakdown">
           <div className="p-4"><ResponsiveContainer width="100%" height={200}>
             <PieChart>
-              <Pie data={byStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80}>
+              <Pie data={byStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
                 {byStatus.map((_:any, i:number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
               </Pie>
                 <Tooltip />
-                <Legend />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
               </PieChart>
           </ResponsiveContainer></div>
         </Card>
@@ -602,20 +617,20 @@ function UserDashboard() {
         <Card title="Status Breakdown">
           <div className="p-4"><ResponsiveContainer width="100%" height={200}>
             <PieChart>
-              <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80}>
+              <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
                 {statusData.map((_:any, i:number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
               </Pie>
                 <Tooltip />
-                <Legend />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
               </PieChart>
           </ResponsiveContainer></div>
         </Card>
         <Card title="By Record Type">
           <div className="p-4"><ResponsiveContainer width="100%" height={200}>
             <PieChart>
-              <Pie data={byType} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80}>
+              <Pie data={byType} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
                 {byType.map((_:any, i:number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-              </Pie><Tooltip /><Legend />
+              </Pie><Tooltip /><Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
             </PieChart>
           </ResponsiveContainer></div>
         </Card>
