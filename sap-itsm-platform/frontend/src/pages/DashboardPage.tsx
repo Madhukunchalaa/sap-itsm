@@ -146,6 +146,7 @@ function AdminDashboard() {
                   {statusData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                 </Pie>
                 <Tooltip />
+                <Legend />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -160,8 +161,9 @@ function AdminDashboard() {
                   <Pie data={moduleData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
                     {moduleData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                   </Pie>
-                  <Tooltip />
-                </PieChart>
+                <Tooltip />
+                <Legend />
+              </PieChart>
               </ResponsiveContainer>
             ) : (
               <p className="text-xs text-gray-400 text-center py-16">No module data</p>
@@ -182,8 +184,9 @@ function AdminDashboard() {
                     <Pie data={plantData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
                       {plantData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                     </Pie>
-                    <Tooltip />
-                  </PieChart>
+                <Tooltip />
+                <Legend />
+              </PieChart>
                 </ResponsiveContainer>
               ) : (
                 <p className="text-xs text-gray-400 text-center py-16">No plant data</p>
@@ -202,6 +205,7 @@ function AdminDashboard() {
                 </Pie>
                 <Tooltip />
                 <Legend />
+               <Legend />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -329,8 +333,10 @@ function PMDashboard() {
             <PieChart>
               <Pie data={moduleData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
                 {moduleData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-              </Pie><Tooltip />
-            </PieChart>
+              </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
           </ResponsiveContainer></div>
         </Card>
         <Card title="Agent Workload">
@@ -432,8 +438,10 @@ function CustomerDashboard() {
             <PieChart>
               <Pie data={moduleData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
                 {moduleData.map((_:any, i:number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-              </Pie><Tooltip />
-            </PieChart>
+              </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
           </ResponsiveContainer></div>
         </Card>
         <Card title="Monthly Trend">
@@ -517,8 +525,10 @@ function AgentDashboard() {
             <PieChart>
               <Pie data={byStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
                 {byStatus.map((_:any, i:number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-              </Pie><Tooltip />
-            </PieChart>
+              </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
           </ResponsiveContainer></div>
         </Card>
         <Card title={`🔴 Urgent Tickets (${(d?.urgent || []).length})`}>
@@ -594,8 +604,10 @@ function UserDashboard() {
             <PieChart>
               <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
                 {statusData.map((_:any, i:number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-              </Pie><Tooltip />
-            </PieChart>
+              </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
           </ResponsiveContainer></div>
         </Card>
         <Card title="By Record Type">
