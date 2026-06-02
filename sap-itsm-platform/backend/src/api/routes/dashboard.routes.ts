@@ -18,29 +18,31 @@ async function buildScopeWhere(req: any): Promise<{ where: any; cacheKey: string
   const role = req.user!.role, userId = req.user!.sub, tenantId = req.user!.tenantId;
   const customerId = req.user!.customerId;
 
+  let result: { where: any; cacheKey: string } | null = null;
+
   if (role === 'SUPER_ADMIN') {
-    return { where: { tenantId }, cacheKey: cache.key.dashboard(tenantId) };
-  }
-  if (role === 'COMPANY_ADMIN') {
-    if (!customerId) return null;
-    return { where: { tenantId, customerId }, cacheKey: `dash:ca:${customerId}` };
-  }
-  if (role === 'USER') {
-    return { where: { tenantId, createdById: userId }, cacheKey: `dash:u:${userId}` };
-  }
-  if (role === 'AGENT') {
+    result = { where: { tenantId }, cacheKey: cache.key.dashboard(tenantId) };
+  } else if (role === 'COMPANY_ADMIN') {
+    if (customerId) result = { where: { tenantId, customerId }, cacheKey: `dash:ca:${customerId}` };
+  } else if (role === 'USER') {
+    result = { where: { tenantId, createdById: userId }, cacheKey: `dash:u:${userId}` };
+  } else if (role === 'AGENT') {
     const agent = await resolveAgent(userId);
-    if (!agent) return null;
-    return { where: { tenantId, assignedAgentId: agent.id }, cacheKey: `dash:ag:${agent.id}` };
-  }
-  if (role === 'PROJECT_MANAGER') {
+    if (agent) result = { where: { tenantId, assignedAgentId: agent.id }, cacheKey: `dash:ag:${agent.id}` };
+  } else if (role === 'PROJECT_MANAGER') {
     const agent = await resolveAgent(userId);
-    if (!agent) return null;
-    const ids = await resolveManagedCustomerIds(agent.id, tenantId);
-    if (ids.length === 0) return null;
-    return { where: { tenantId, customerId: { in: ids } }, cacheKey: `dash:pm:${agent.id}` };
+    if (agent) {
+      const ids = await resolveManagedCustomerIds(agent.id, tenantId);
+      if (ids.length > 0) result = { where: { tenantId, customerId: { in: ids } }, cacheKey: `dash:pm:${agent.id}` };
+    }
   }
-  return null;
+
+  if (result && req.query.plant) {
+    result.where.plant = req.query.plant;
+    result.cacheKey += `:p:${req.query.plant}`;
+  }
+
+  return result;
 }
 
 // GET /dashboard
@@ -55,7 +57,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    const [totalOpen, newToday, p1Open, slaBreaches, byStatus, byPriority, byType, recentRecords] = await Promise.all([
+    const [totalOpen, newToday, p1Open, slaBreaches, byStatus, byPriority, byType, recentRecords, byPlant, byModuleRaw] = await Promise.all([
       prisma.iTSMRecord.count({ where: { ...baseWhere, status: { in: ['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING'] as RecordStatus[] } } }),
       prisma.iTSMRecord.count({ where: { ...baseWhere, createdAt: { gte: today } } }),
       prisma.iTSMRecord.count({ where: { ...baseWhere, priority: 'P1', status: { notIn: ['RESOLVED', 'CLOSED', 'CANCELLED'] } } }),
@@ -72,13 +74,22 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
         },
         orderBy: { createdAt: 'desc' }, take: 10,
       }),
+      (prisma.iTSMRecord.groupBy as any)({ by: ['plant'], where: { ...baseWhere, plant: { not: null } }, _count: true }),
+      (prisma.iTSMRecord.groupBy as any)({ by: ['sapModuleId'], where: { ...baseWhere, sapModuleId: { not: null } }, _count: true }),
     ]);
+
+    // Resolve module names
+    const bmArr: any[] = byModuleRaw as any[];
+    const modIds = bmArr.map((m: any) => m.sapModuleId).filter(Boolean);
+    const mods = modIds.length > 0 ? await prisma.sAPModuleMaster.findMany({ where: { id: { in: modIds } }, select: { id: true, code: true } }) : [];
 
     const dashboard = {
       summary: { totalOpen, newToday, p1Open, slaBreaches },
       byStatus: byStatus.map((s: any) => ({ status: s.status, count: s._count })),
       byPriority: byPriority.map((p: any) => ({ priority: p.priority, count: p._count })),
       byType: byType.map((t: any) => ({ type: t.recordType, count: t._count })),
+      byPlant: (byPlant as any[]).map((p: any) => ({ plant: p.plant || 'Unassigned', count: p._count })),
+      byModule: bmArr.map((m: any) => ({ code: mods.find(mm => mm.id === m.sapModuleId)?.code || '?', count: m._count })),
       recentRecords,
       agentWorkload: [],
       monthlyTrend: [],

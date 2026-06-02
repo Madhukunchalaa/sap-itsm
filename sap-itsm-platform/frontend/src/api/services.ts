@@ -211,7 +211,7 @@ export const assignmentRulesApi = {
 
 // ── Dashboard API ─────────────────────────────────────────────
 export const dashboardApi = {
-  overview: () => apiClient.get('/dashboard'),
+  overview: (plant?: string) => apiClient.get('/dashboard', { params: { plant } }),
   pm: () => apiClient.get('/dashboard/pm'),
   customer: () => apiClient.get('/dashboard/customer'),
   agent: () => apiClient.get('/dashboard/agent'),

@@ -30,7 +30,8 @@ export default function DashboardPage() {
 function AdminDashboard() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { data: dashboard, isLoading, refetch, dataUpdatedAt } = useDashboard();
+  const [plantFilter, setPlantFilter] = React.useState<string>('');
+  const { data: dashboard, isLoading, refetch, dataUpdatedAt } = useDashboard(plantFilter || undefined);
 
   if (isLoading) return <LoadingSpinner fullscreen label="Loading dashboard…" />;
   if (!dashboard) return (
@@ -47,6 +48,8 @@ function AdminDashboard() {
   const statusData = d?.byStatus?.map((s: any) => ({ name: s.status.replace('_', ' '), value: s.count })) || [];
   const priorityData = d?.byPriority?.map((p: any) => ({ name: p.priority, count: p.count })) || [];
   const typeData = d?.byType?.map((t: any) => ({ name: t.type, value: t.count })) || [];
+  const plantData = d?.byPlant?.map((p: any) => ({ name: p.plant, value: p.count })) || [];
+  const moduleData = d?.byModule?.map((m: any) => ({ name: m.code, value: m.count })) || [];
   const trendData = d?.monthlyTrend?.map((t: any) => ({
     day: new Date(t.day).toLocaleDateString('en', { month: 'short', day: 'numeric' }),
     total: Number(t.total),
@@ -59,13 +62,24 @@ function AdminDashboard() {
         title={`Good ${getGreeting()}, ${user?.firstName} 👋`}
         subtitle="Here's what's happening in your service desk"
         actions={
-          <button
-            onClick={() => refetch()}
-            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Refresh {lastUpdated && <span className="text-xs text-gray-400">({lastUpdated})</span>}
-          </button>
+          <div className="flex items-center gap-3">
+            <select
+              value={plantFilter}
+              onChange={(e) => setPlantFilter(e.target.value)}
+              className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[140px]"
+            >
+              <option value="">All Plants</option>
+              <option value="SEPC - 3121">SEPC - 3121</option>
+              <option value="TAQA - 2301">TAQA - 2301</option>
+            </select>
+            <button
+              onClick={() => refetch()}
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Refresh {lastUpdated && <span className="text-xs text-gray-400">({lastUpdated})</span>}
+            </button>
+          </div>
         }
       />
 
@@ -135,6 +149,47 @@ function AdminDashboard() {
             </ResponsiveContainer>
           </div>
         </Card>
+
+        {/* Tickets by SAP Module */}
+        <Card title="By SAP Module">
+          <div className="p-4">
+            {moduleData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie data={moduleData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                    {moduleData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="text-xs text-gray-400 text-center py-16">No module data</p>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      {/* ── Charts Row 2 ──────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Tickets by Plant (Only show if 'All Plants' is selected) */}
+        {!plantFilter && (
+          <Card title="By Plant">
+            <div className="p-4">
+              {plantData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie data={plantData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                      {plantData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-xs text-gray-400 text-center py-16">No plant data</p>
+              )}
+            </div>
+          </Card>
+        )}
 
         {/* Record type */}
         <Card title="By Record Type">
