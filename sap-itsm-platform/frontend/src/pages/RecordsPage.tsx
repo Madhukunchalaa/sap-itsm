@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Filter, Plus, X, Download } from 'lucide-react';
-import { useRecords, useSapModules, useAgents } from '../hooks/useApi';
+import { useRecords, useSapModules, useAgents, useUsers } from '../hooks/useApi';
 import { DataTable, Column } from '../components/ui/DataTable';
 import { PriorityBadge, StatusBadge, TypeBadge, SLABadge } from '../components/ui/Badges';
 import { useResolvedTicketCount } from '../hooks/useApi';
