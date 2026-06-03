@@ -9,8 +9,12 @@ import { startEmailWorker } from './workers/email.worker';
 import { startEscalationWorker } from './workers/escalation.worker';
 import { seedDatabase } from './seed';
 import bcrypt from 'bcryptjs';
+import { initBackupJob } from './jobs/backup.job';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
+
+// Initialize scheduled jobs
+initBackupJob();
 
 // ── Full reset: wipe everything, create Intraedge + admin@intraedge.com ──
 async function resetAndReseed() {

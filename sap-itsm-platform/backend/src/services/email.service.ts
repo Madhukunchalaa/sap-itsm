@@ -138,6 +138,16 @@ const TEMPLATES: Record<string, { subject: string; html: string }> = {
       </div>
     `,
   },
+  DB_BACKUP: {
+    subject: 'Daily Database Backup - {{date}}',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px;">
+        <h2 style="color: #1a73e8;">Daily Database Backup</h2>
+        <p>Please find attached the daily PostgreSQL database backup for <b>{{date}}</b>.</p>
+        <p style="color:#666; font-size:13px;">This is an automated message. Please do not reply.</p>
+      </div>
+    `,
+  },
 };
 
 export async function sendPasswordResetEmail(email: string, name: string, token: string): Promise<void> {
@@ -168,6 +178,7 @@ export interface SendEmailParams {
   cc?: string[];
   variables: Record<string, unknown>;
   recordId?: string;
+  attachments?: { filename: string; path: string; contentType?: string }[];
 }
 
 export async function sendEmail(params: SendEmailParams): Promise<void> {
@@ -204,6 +215,7 @@ export async function sendEmail(params: SendEmailParams): Promise<void> {
       cc: params.cc?.join(', '),
       subject,
       html,
+      attachments: params.attachments,
     });
 
     await prisma.emailLog.update({
