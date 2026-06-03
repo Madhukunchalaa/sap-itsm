@@ -9,12 +9,12 @@ const BACKUP_EMAIL = 'mkunchala@intraedge.com';
 
 /**
  * Initializes the automated database backup cron job.
- * Runs every day at 09:00 AM.
+ * Runs at 1:30 PM IST (for testing).
  */
 export function initBackupJob() {
-  logger.info('Initializing automated database backup job (runs at 09:00 AM daily)...');
+  logger.info('Initializing automated database backup job (runs at 1:30 PM IST)...');
 
-  cron.schedule('0 9 * * *', async () => {
+  cron.schedule('30 13 * * *', async () => {
     logger.info('Starting automated database backup...');
     
     const dbUrl = process.env.DATABASE_URL;
@@ -77,5 +77,7 @@ export function initBackupJob() {
         }
       }
     });
+  }, {
+    timezone: 'Asia/Kolkata'
   });
 }
