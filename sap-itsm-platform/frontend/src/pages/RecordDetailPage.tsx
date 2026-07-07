@@ -8,7 +8,7 @@ import { PriorityBadge, StatusBadge, TypeBadge } from '../components/ui/Badges';
 import { Button, Card, Textarea } from '../components/ui/Forms';
 import { Modal } from '../components/ui/Modal';
 import { useAuthStore } from '../store/auth.store';
-import { formatDistanceToNow, format } from 'date-fns';
+import { formatDistanceToNow, format, formatDistance } from 'date-fns';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 
@@ -629,10 +629,16 @@ export default function RecordDetailPage() {
                   <span className="text-gray-600">{format(new Date(record.createdAt),'MMM d, yyyy HH:mm')}</span>
                 </div>
                 {record.resolvedAt && (
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-400">Resolved</span>
-                    <span className="text-green-600">{format(new Date(record.resolvedAt),'MMM d, yyyy HH:mm')}</span>
-                  </div>
+                  <>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-400">Resolved</span>
+                      <span className="text-green-600">{format(new Date(record.resolvedAt),'MMM d, yyyy HH:mm')}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-400">Time to Resolve</span>
+                      <span className="text-blue-600 font-medium">{formatDistance(new Date(record.resolvedAt), new Date(record.createdAt))}</span>
+                    </div>
+                  </>
                 )}
               </div>
 

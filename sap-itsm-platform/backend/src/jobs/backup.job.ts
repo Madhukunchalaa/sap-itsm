@@ -14,7 +14,8 @@ const BACKUP_EMAIL = 'mkunchala@intraedge.com';
 export function initBackupJob() {
   logger.info('Initializing automated database backup job (runs at 1:30 PM IST)...');
 
-  cron.schedule('30 13 * * *', async () => {
+  // Runs at 9:00 AM IST every 2 days (assuming server time might be UTC or IST, we use 03:30 UTC for 9:00 AM IST)
+  cron.schedule('30 3 */2 * *', async () => {
     logger.info('Starting automated database backup...');
     
     const dbUrl = process.env.DATABASE_URL;
