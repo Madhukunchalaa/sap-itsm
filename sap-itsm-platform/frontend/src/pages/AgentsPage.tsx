@@ -95,7 +95,7 @@ export default function AgentsPage() {
     }));
     // Pre-populate customers already assigned to this PM
     const currentlyAssigned = allCustomers
-      .filter((c: any) => c.projectManager?.id === a.id)
+      .filter((c: any) => c.projectManagers?.some((pm: any) => pm.agent?.id === a.id))
       .map((c: any) => c.id);
     setForm({
       agentType: a.agentType || 'AGENT',
@@ -236,6 +236,7 @@ export default function AgentsPage() {
         toast.success(`${form.agentType === 'PROJECT_MANAGER' ? 'Project Manager' : 'Agent'} created`);
       }
       qc.invalidateQueries({ queryKey: ['agents'] });
+      qc.invalidateQueries({ queryKey: ['customers-all'] });
       setShowModal(false);
     } catch(e) { toast.error(getErrorMessage(e)); }
     finally { setSaving(false); }
@@ -454,9 +455,9 @@ export default function AgentsPage() {
                               }}
                               className="w-4 h-4 accent-indigo-600 rounded flex-shrink-0"/>
                             <span className={`text-sm font-medium ${checked ? 'text-indigo-700' : 'text-gray-700'}`}>{c.companyName}</span>
-                            {c.projectManager && c.projectManager.id !== editId && (
+                            {c.projectManagers && c.projectManagers.some((pm: any) => pm.agent?.id !== editId) && (
                               <span className="ml-auto text-xs text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
-                                has PM
+                                has other PM(s)
                               </span>
                             )}
                           </label>
