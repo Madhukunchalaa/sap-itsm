@@ -313,10 +313,14 @@ export async function resolveRecipients(
         if (record.customerId) {
           const cust = await prisma.customer.findUnique({
             where: { id: record.customerId },
-            include: { projectManager: { select: { userId: true } } },
+            include: { projectManagers: { select: { agent: { select: { userId: true } } } } },
           });
-          if (cust?.projectManager?.userId && !recipients.has(cust.projectManager.userId)) {
-            recipients.set(cust.projectManager.userId, 'PROJECT_MANAGER');
+          if (cust?.projectManagers) {
+            for (const pm of cust.projectManagers) {
+              if (pm.agent?.userId && !recipients.has(pm.agent.userId)) {
+                recipients.set(pm.agent.userId, 'PROJECT_MANAGER');
+              }
+            }
           }
         }
         break;
@@ -618,7 +622,7 @@ export async function notifyCommentDirect(params: {
       customer: {
         select: {
           companyName: true,
-          projectManager: { select: { userId: true, user: { select: { id: true, email: true, firstName: true, lastName: true } } } },
+          projectManagers: { select: { agent: { select: { userId: true, user: { select: { id: true, email: true, firstName: true, lastName: true } } } } } },
         },
       },
       createdBy: { select: { id: true, email: true, firstName: true, lastName: true } },
@@ -647,9 +651,11 @@ export async function notifyCommentDirect(params: {
     const au = record.assignedAgent.user;
     if (!participants.find(p => p.id === au.id)) participants.push(au);
   }
-  const pmUser = (record.customer as any)?.projectManager?.user;
-  if (pmUser && pmUser.id !== authorId && !participants.find(p => p.id === pmUser.id)) {
-    participants.push(pmUser);
+  const pmUsers = (record.customer as any)?.projectManagers?.map((pm: any) => pm.agent?.user) || [];
+  for (const pmUser of pmUsers) {
+    if (pmUser && pmUser.id !== authorId && !participants.find(p => p.id === pmUser.id)) {
+      participants.push(pmUser);
+    }
   }
 
   for (const user of participants) {
@@ -681,35 +687,40 @@ export async function notifyPMOnUpdate(params: {
       customer: {
         select: {
           companyName: true,
-          projectManager: { select: { userId: true, user: { select: { id: true, email: true, firstName: true, lastName: true } } } },
+          projectManagers: { select: { agent: { select: { user: { select: { id: true, email: true, firstName: true, lastName: true } } } } } },
         },
       },
     },
   });
   if (!record) return;
 
-  const pmUser = (record.customer as any)?.projectManager?.user;
-  if (!pmUser || pmUser.id === triggeredById) return;
+  const pmUsers = (record.customer as any)?.projectManagers?.map((pm: any) => pm.agent?.user) || [];
+  if (pmUsers.length === 0) return;
 
   const portalUrl = process.env.PORTAL_URL || 'http://localhost:3000';
   const subject = `[${record.recordNumber}] ${eventLabel}`;
-  const html = `<div style="font-family:Arial,sans-serif;max-width:600px;">
-    <h2 style="color:#1a73e8;">Ticket Update: ${record.recordNumber}</h2>
-    <p>Hello ${pmUser.firstName},</p>
-    <p><b>${eventLabel}</b></p>
-    <table style="width:100%;border-collapse:collapse;">
-      <tr><td style="padding:8px;background:#f5f5f5;"><b>Ticket</b></td><td style="padding:8px;">${record.recordNumber} — ${record.title}</td></tr>
-      <tr><td style="padding:8px;background:#f5f5f5;"><b>Priority</b></td><td style="padding:8px;">${record.priority}</td></tr>
-      <tr><td style="padding:8px;background:#f5f5f5;"><b>Status</b></td><td style="padding:8px;">${record.status}</td></tr>
-      <tr><td style="padding:8px;background:#f5f5f5;"><b>Customer</b></td><td style="padding:8px;">${(record.customer as any)?.companyName || ''}</td></tr>
-    </table>
-    <a href="${portalUrl}/records/${record.id}" style="display:inline-block;margin-top:16px;background:#1a73e8;color:white;padding:10px 20px;text-decoration:none;border-radius:6px;">View Ticket</a>
-  </div>`;
 
-  try {
-    await sendEmail({ to: pmUser.email, subject, html });
-  } catch (e) {
-    logger.error(`[notifyPMOnUpdate] Email failed to ${pmUser.email}:`, e);
+  for (const pmUser of pmUsers) {
+    if (!pmUser || pmUser.id === triggeredById) continue;
+
+    const html = `<div style="font-family:Arial,sans-serif;max-width:600px;">
+      <h2 style="color:#1a73e8;">Ticket Update: ${record.recordNumber}</h2>
+      <p>Hello ${pmUser.firstName},</p>
+      <p><b>${eventLabel}</b></p>
+      <table style="width:100%;border-collapse:collapse;">
+        <tr><td style="padding:8px;background:#f5f5f5;"><b>Ticket</b></td><td style="padding:8px;">${record.recordNumber} — ${record.title}</td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5;"><b>Priority</b></td><td style="padding:8px;">${record.priority}</td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5;"><b>Status</b></td><td style="padding:8px;">${record.status}</td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5;"><b>Customer</b></td><td style="padding:8px;">${(record.customer as any)?.companyName || ''}</td></tr>
+      </table>
+      <a href="${portalUrl}/records/${record.id}" style="display:inline-block;margin-top:16px;background:#1a73e8;color:white;padding:10px 20px;text-decoration:none;border-radius:6px;">View Ticket</a>
+    </div>`;
+
+    try {
+      await sendEmail({ to: pmUser.email, subject, html });
+    } catch (e) {
+      logger.error(`[notifyPMOnUpdate] Email failed to ${pmUser.email}:`, e);
+    }
   }
 }
 

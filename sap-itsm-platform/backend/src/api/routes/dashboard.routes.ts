@@ -138,8 +138,8 @@ router.get('/pm', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Req
     if (req.user!.role === 'PROJECT_MANAGER') {
       const agent = await prisma.agent.findUnique({ where: { userId: req.user!.sub }, select: { id: true } });
       if (!agent) { res.json({ success: true, customers: [], slaRisk: [], aging: [], pending: [], moduleHeat: [], agentWorkload: [], recent: [] }); return; }
-      const managed = await prisma.customer.findMany({ where: { projectManagerAgentId: agent.id, tenant: { id: tenantId } }, select: { id: true } });
-      customerIds = managed.map(c => c.id);
+      const managed = await prisma.customerProjectManager.findMany({ where: { agentId: agent.id, customer: { tenantId } }, select: { customerId: true } });
+      customerIds = managed.map(c => c.customerId);
     } else {
       const all = await prisma.customer.findMany({ where: { tenantId, status: 'ACTIVE' }, select: { id: true } });
       customerIds = all.map(c => c.id);

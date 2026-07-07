@@ -44,7 +44,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
         include: {
           _count: { select: { contracts: true, records: true } },
           adminUser: { select: { id: true, firstName: true, lastName: true, email: true } },
-          projectManager: { select: { id: true, user: { select: { id: true, firstName: true, lastName: true } } } },
+          projectManagers: { include: { agent: { include: { user: { select: { firstName: true, lastName: true } } } } } },
           customerAgents: { include: { agent: { include: { user: { select: { id: true, firstName: true, lastName: true } } } } } },
           contracts: { select: { id: true, contractNumber: true, endDate: true }, orderBy: { endDate: 'desc' }, take: 1 },
         },
@@ -67,7 +67,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       include: {
         contracts: true,
         adminUser: { select: { id: true, firstName: true, lastName: true, email: true } },
-        projectManager: { select: { id: true, specialization: true, user: { select: { id: true, firstName: true, lastName: true } } } },
+        projectManagers: { include: { agent: { include: { user: { select: { firstName: true, lastName: true, email: true } } } } } },
         customerAgents: { include: { agent: { include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } } } } },
         users: { select: { id: true, firstName: true, lastName: true, email: true, role: true, status: true } },
         _count: { select: { records: true } },
@@ -91,7 +91,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
 
 router.post('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { companyName, industry, country, timezone, status, website, contactName, contactEmail, contactPhone, billingEmail, billingAddress, notes, allowedDomains, adminUserId, projectManagerAgentId, holidayCalendarId, agentIds } = req.body;
+    const { companyName, industry, country, timezone, status, website, contactName, contactEmail, contactPhone, billingEmail, billingAddress, notes, allowedDomains, adminUserId, projectManagerAgentIds, holidayCalendarId, agentIds } = req.body;
     const customer = await prisma.customer.create({
       data: {
         tenantId: req.user!.tenantId, companyName, industry, country,
@@ -99,8 +99,12 @@ router.post('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'),
         website, contactName, contactEmail, contactPhone, billingEmail, billingAddress, notes,
         allowedDomains: allowedDomains || [],
         adminUserId: adminUserId || undefined,
-        projectManagerAgentId: projectManagerAgentId || undefined,
         holidayCalendarId: holidayCalendarId || undefined,
+        projectManagers: projectManagerAgentIds && projectManagerAgentIds.length > 0 ? {
+          create: projectManagerAgentIds.map((id: string) => ({
+            agent: { connect: { id } }
+          }))
+        } : undefined,
         customerAgents: agentIds?.length ? { create: agentIds.map((id: string) => ({ agentId: id })) } : undefined,
       } as any,
     });
@@ -121,19 +125,42 @@ router.patch('/:id', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGE
       const ids = await resolveManagedCustomerIds(agent.id, req.user!.tenantId);
       if (!ids.includes(req.params.id)) { res.status(403).json({ success: false, error: 'Access denied' }); return; }
     }
-    const allowed = ['companyName', 'industry', 'country', 'timezone', 'status', 'website', 'contactName', 'contactEmail', 'contactPhone', 'billingEmail', 'billingAddress', 'notes', 'allowedDomains', 'adminUserId', 'projectManagerAgentId', 'holidayCalendarId'];
-    const data: Record<string, unknown> = {};
-    for (const k of allowed) if (req.body[k] !== undefined) data[k] = req.body[k] || undefined;
-    const oldCustomer = await prisma.customer.findFirst({ where: { id: req.params.id, tenantId: req.user!.tenantId }, select: { companyName: true, status: true, adminUserId: true, projectManagerAgentId: true } });
-    await prisma.customer.updateMany({ where: { id: req.params.id, tenantId: req.user!.tenantId }, data: data as any });
-    await auditLog({ ...auditFromRequest(req), action: 'UPDATE', entityType: 'Customer', entityId: req.params.id, oldValues: oldCustomer, newValues: data });
-
+    const allowed = ['companyName', 'industry', 'country', 'timezone', 'status', 'website', 'contactName', 'contactEmail', 'contactPhone', 'billingEmail', 'billingAddress', 'notes', 'allowedDomains', 'adminUserId', 'projectManagerAgentIds', 'holidayCalendarId'];
+    const data: any = {};
+    for (const k of allowed) if (req.body[k] !== undefined) data[k] = req.body[k];
+    
+    // We only need to check permissions, so we select id
+    const oldCustomer = await prisma.customer.findFirst({ where: { id: req.params.id, tenantId: req.user!.tenantId }, select: { id: true, companyName: true, status: true, adminUserId: true } });
+    if (!oldCustomer) return res.status(404).json({ error: 'Customer not found' });
+    
+    // If agentIds is provided, update CustomerAgent relationships
     if (req.body.agentIds !== undefined) {
+      const newIds = req.body.agentIds;
       await prisma.customerAgent.deleteMany({ where: { customerId: req.params.id } });
-      if (req.body.agentIds.length > 0) {
-        await prisma.customerAgent.createMany({ data: req.body.agentIds.map((agentId: string) => ({ customerId: req.params.id, agentId })), skipDuplicates: true });
+      if (newIds.length > 0) {
+        await prisma.customerAgent.createMany({
+          data: newIds.map((id: string) => ({ customerId: req.params.id, agentId: id })),
+        });
       }
     }
+
+    // If projectManagerAgentIds is provided, update CustomerProjectManager relationships
+    if (data.projectManagerAgentIds !== undefined) {
+      const pmIds = data.projectManagerAgentIds;
+      await prisma.customerProjectManager.deleteMany({ where: { customerId: req.params.id } });
+      if (pmIds && pmIds.length > 0) {
+        await prisma.customerProjectManager.createMany({
+          data: pmIds.map((id: string) => ({ customerId: req.params.id, agentId: id })),
+        });
+      }
+      delete data.projectManagerAgentIds; // Remove it so it doesn't get updated as scalar
+    }
+
+    if (Object.keys(data).length > 0) {
+      await prisma.customer.updateMany({ where: { id: req.params.id, tenantId: req.user!.tenantId }, data: data as any });
+    }
+    await auditLog({ ...auditFromRequest(req), action: 'UPDATE', entityType: 'Customer', entityId: req.params.id, oldValues: oldCustomer, newValues: data });
+
     if (req.body.adminUserId) {
       await prisma.user.updateMany({ where: { id: req.body.adminUserId, tenantId: req.user!.tenantId }, data: { customerId: req.params.id } });
     }

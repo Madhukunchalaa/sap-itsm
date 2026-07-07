@@ -99,10 +99,10 @@ model Agent {
   updatedAt        DateTime              @updatedAt @map("updated_at")
   specializations  AgentSpecialization[]
   user             User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  customerAgents   CustomerAgent[]
-  managedCustomers Customer[]            @relation("CustomerPM")
-  assignments      ITSMRecord[]
-  timeEntries      TimeEntry[]
+  customerAgents      CustomerAgent[]
+  projectManagers     CustomerProjectManager[]
+  assignments         ITSMRecord[]
+  timeEntries         TimeEntry[]
 
   @@index([status])
   @@index([level])
@@ -163,7 +163,6 @@ model Customer {
   notes                 String?
   allowedDomains        String[]            @default([]) @map("allowed_domains")
   adminUserId           String?             @unique @map("admin_user_id")
-  projectManagerAgentId String?             @map("project_manager_agent_id")
   holidayCalendarId     String?             @map("holiday_calendar_id")
   createdAt             DateTime            @default(now()) @map("created_at")
   updatedAt             DateTime            @updatedAt @map("updated_at")
@@ -171,8 +170,8 @@ model Customer {
   configurationItems    ConfigurationItem[]
   contracts             Contract[]
   customerAgents        CustomerAgent[]
+  projectManagers       CustomerProjectManager[]
   adminUser             User?               @relation("CustomerAdmin", fields: [adminUserId], references: [id])
-  projectManager        Agent?              @relation("CustomerPM", fields: [projectManagerAgentId], references: [id])
   tenant                Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   records               ITSMRecord[]
   notificationRules     NotificationRule[]
@@ -192,6 +191,17 @@ model CustomerAgent {
 
   @@id([customerId, agentId])
   @@map("customer_agents")
+}
+
+model CustomerProjectManager {
+  customerId String   @map("customer_id")
+  agentId    String   @map("agent_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  agent      Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@id([customerId, agentId])
+  @@map("customer_project_managers")
 }
 
 model SupportTypeMaster {
