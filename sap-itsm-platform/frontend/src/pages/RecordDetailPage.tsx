@@ -466,6 +466,14 @@ export default function RecordDetailPage() {
                     timeToResolveAfterAssign = `${formatMs(Date.now() - firstAssignTime.getTime())} (Active)`;
                   }
 
+                  let totalCycleTime = 'N/A';
+                  const createdTime = new Date(record.createdAt).getTime();
+                  if (record.resolvedAt) {
+                    totalCycleTime = formatMs(new Date(record.resolvedAt).getTime() - createdTime);
+                  } else {
+                    totalCycleTime = `${formatMs(Date.now() - createdTime)} (Active)`;
+                  }
+
                   let maxStatus = 'N/A';
                   let maxDurationMs = 0;
                   Object.entries(statusDurations).forEach(([status, ms]) => {
@@ -499,9 +507,13 @@ export default function RecordDetailPage() {
                   return (
                     <div className="space-y-5">
                       {/* Premium Metrics Summary Dashboard */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 border border-slate-100 rounded-2xl p-4 shadow-sm">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 border border-slate-100 rounded-2xl p-4 shadow-sm">
                         <div className="bg-white border border-gray-100 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
-                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Time to Complete (Post-Assign)</span>
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Cycle Time</span>
+                          <span className="text-base font-bold text-emerald-700 mt-1.5">{totalCycleTime}</span>
+                        </div>
+                        <div className="bg-white border border-gray-100 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Time (Post-Assign)</span>
                           <span className="text-base font-bold text-slate-800 mt-1.5">{timeToResolveAfterAssign}</span>
                         </div>
                         <div className="bg-white border border-gray-100 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">

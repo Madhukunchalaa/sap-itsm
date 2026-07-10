@@ -96,7 +96,9 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
     const statusIn    = toArray(q.status);
     const recordTypeIn = toArray(q.recordType);
     const priorityIn  = toArray(q.priority);
-    const sapModuleIdIn = toArray(q.sapModuleId);
+    const sapModuleIdIn = req.user!.sapModuleId
+      ? [req.user!.sapModuleId]
+      : toArray(q.sapModuleId);
 
     const result = await listRecords({
       tenantId:        req.user!.tenantId,
@@ -129,6 +131,11 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const record = await getRecord(req.params.id, req.user!.tenantId) as any;
     if (!record) { res.status(404).json({ success: false, error: 'Not found' }); return; }
+
+    if (req.user!.sapModuleId && record.sapModuleId !== req.user!.sapModuleId) {
+      res.status(403).json({ success: false, error: 'Access denied - restricted SAP Module' });
+      return;
+    }
 
     const role   = req.user!.role;
     const userId = req.user!.sub;
@@ -186,8 +193,12 @@ router.post('/',
   validate(createRecordSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const payload = { ...req.body };
+      if (req.user!.sapModuleId) {
+        payload.sapModuleId = req.user!.sapModuleId;
+      }
       const record = await createRecord({
-        ...req.body,
+        ...payload,
         tenantId: req.user!.tenantId,
         createdById: req.user!.sub,
       });

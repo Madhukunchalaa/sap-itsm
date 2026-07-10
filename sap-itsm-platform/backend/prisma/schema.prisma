@@ -62,12 +62,15 @@ model User {
   approvedTimeEntries TimeEntry[]              @relation("ApprovedBy")
   customer            Customer?                @relation("CustomerUsers", fields: [customerId], references: [id])
   tenant              Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sapModuleId         String?                  @map("sap_module_id")
+  sapModule           SAPModuleMaster?         @relation(fields: [sapModuleId], references: [id])
 
   @@index([tenantId])
   @@index([email])
   @@index([role])
   @@index([status])
   @@index([customerId])
+  @@index([sapModuleId])
   @@map("users")
 }
 
@@ -268,6 +271,7 @@ model SAPModuleMaster {
   records              ITSMRecord[]          @relation("RecordSAPModule")
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   subModules           SAPSubModuleMaster[]
+  users                User[]
 
   @@unique([tenantId, code])
   @@index([tenantId])

@@ -11,6 +11,7 @@ export interface JWTPayload {
   role: UserRole;
   email: string;
   customerId?: string | null;   // set for COMPANY_ADMIN and USER — re-fetched from DB
+  sapModuleId?: string | null;  // SAP module restriction
   iat?: number;
   exp?: number;
 }
@@ -46,7 +47,7 @@ export const verifyJWT = async (
     // Verify user still exists and is active — also fetch fresh customerId
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, status: true, tenantId: true, role: true, customerId: true },
+      select: { id: true, status: true, tenantId: true, role: true, customerId: true, sapModuleId: true },
     });
 
     if (!user) {
@@ -60,6 +61,7 @@ export const verifyJWT = async (
     req.user = {
       ...payload,
       customerId: user.customerId ?? null,
+      sapModuleId: user.sapModuleId ?? null,
     };
     next();
   } catch (error) {
