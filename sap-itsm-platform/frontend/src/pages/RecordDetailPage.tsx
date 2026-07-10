@@ -417,6 +417,65 @@ export default function RecordDetailPage() {
                     if (!canSeeInternal && log.entityType === 'Comment' && log.newValues?.internalFlag) return false;
                     return true;
                   });
+
+                  // ── Metrics Calculation ─────────────────────────────
+                  const chronoLogs = [...changeLog].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+                  let totalStatusChanges = 0;
+                  let firstAssignTime: Date | null = null;
+                  const statusDurations: Record<string, number> = {};
+                  let currentStatus = 'NEW';
+                  let lastStatusChangeTime = new Date(record.createdAt).getTime();
+
+                  for (const log of chronoLogs) {
+                    if (log.action === 'ASSIGN' || (log.action === 'UPDATE' && log.newValues?.assignedAgentId && !log.oldValues?.assignedAgentId)) {
+                      if (!firstAssignTime) firstAssignTime = new Date(log.createdAt);
+                    }
+                    if (log.action === 'STATUS_CHANGE' || (log.action === 'UPDATE' && log.newValues?.status)) {
+                      const oldStatus = log.oldValues?.status || currentStatus;
+                      const newStatus = log.newValues?.status;
+                      if (newStatus && oldStatus !== newStatus) {
+                        totalStatusChanges++;
+                        const changeTime = new Date(log.createdAt).getTime();
+                        statusDurations[oldStatus] = (statusDurations[oldStatus] || 0) + (changeTime - lastStatusChangeTime);
+                        currentStatus = newStatus;
+                        lastStatusChangeTime = changeTime;
+                      }
+                    }
+                  }
+                  const endTime = record.resolvedAt ? new Date(record.resolvedAt).getTime() : Date.now();
+                  statusDurations[currentStatus] = (statusDurations[currentStatus] || 0) + (endTime - lastStatusChangeTime);
+
+                  const formatMs = (ms: number) => {
+                    const hours = ms / (1000 * 60 * 60);
+                    if (hours < 1) {
+                      const mins = Math.round(ms / (1000 * 60));
+                      return `${mins} min${mins !== 1 ? 's' : ''}`;
+                    }
+                    if (hours > 24) {
+                      const days = Math.floor(hours / 24);
+                      const remHours = Math.round(hours % 24);
+                      return `${days} day${days !== 1 ? 's' : ''} ${remHours} hr${remHours !== 1 ? 's' : ''}`;
+                    }
+                    return `${hours.toFixed(1)} hr${hours !== 1 ? 's' : ''}`;
+                  };
+
+                  let timeToResolveAfterAssign = 'N/A';
+                  if (firstAssignTime && record.resolvedAt) {
+                    timeToResolveAfterAssign = formatMs(new Date(record.resolvedAt).getTime() - firstAssignTime.getTime());
+                  } else if (firstAssignTime && !record.resolvedAt) {
+                    timeToResolveAfterAssign = `${formatMs(Date.now() - firstAssignTime.getTime())} (Active)`;
+                  }
+
+                  let maxStatus = 'N/A';
+                  let maxDurationMs = 0;
+                  Object.entries(statusDurations).forEach(([status, ms]) => {
+                    if (ms > maxDurationMs) {
+                      maxDurationMs = ms;
+                      maxStatus = status;
+                    }
+                  });
+                  const maxStatusText = maxStatus !== 'N/A' ? `${maxStatus} (${formatMs(maxDurationMs)})` : 'N/A';
+
                   // Human-readable field name map (avoids showing raw UUIDs)
                   const FIELD_LABELS: Record<string,string> = {
                     assignedAgentId: 'Assigned Agent',
@@ -436,50 +495,77 @@ export default function RecordDetailPage() {
                     if (UUID_FIELDS.has(k)) return v ? '(set)' : '(cleared)';
                     return String(v);
                   };
-                  if (visibleLogs.length === 0) return <p className="text-sm text-center text-gray-400 py-6">No changes recorded yet.</p>;
-                  return visibleLogs.map((log:any) => {
-                    const actionColors: Record<string,string> = {
-                      STATUS_CHANGE: 'bg-blue-100 text-blue-700',
-                      ASSIGN: 'bg-purple-100 text-purple-700',
-                      UPDATE: 'bg-gray-100 text-gray-600',
-                      COMMENT: 'bg-amber-100 text-amber-700',
-                      CREATE: 'bg-green-100 text-green-700',
-                    };
-                    const colorClass = actionColors[log.action] || 'bg-gray-100 text-gray-600';
-                    const changedKeys = (log.oldValues && log.newValues)
-                      ? Object.keys(log.newValues).filter(k =>
-                          log.oldValues[k] !== undefined && log.oldValues[k] !== log.newValues[k]
-                        )
-                      : [];
-                    return (
-                      <div key={log.id} className="flex gap-3 text-sm border-b border-gray-50 pb-3 last:border-0">
-                        <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center flex-shrink-0 text-xs font-bold text-indigo-600">
-                          {log.user ? `${log.user.firstName?.[0]}${log.user.lastName?.[0]}` : '⚙'}
+
+                  return (
+                    <div className="space-y-5">
+                      {/* Premium Metrics Summary Dashboard */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 border border-slate-100 rounded-2xl p-4 shadow-sm">
+                        <div className="bg-white border border-gray-100 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Time to Complete (Post-Assign)</span>
+                          <span className="text-base font-bold text-slate-800 mt-1.5">{timeToResolveAfterAssign}</span>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium text-gray-900">{log.user ? `${log.user.firstName} ${log.user.lastName}` : 'System'}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded font-medium ${colorClass}`}>{log.action.replace('_',' ')}</span>
-                            <span className="text-xs text-gray-400 ml-auto">{format(new Date(log.createdAt), 'dd MMM yyyy HH:mm')}</span>
-                          </div>
-                          {changedKeys.length > 0 && (
-                            <div className="mt-1 text-xs text-gray-500 space-y-0.5">
-                              {changedKeys.map((k:string) => (
-                                <div key={k}>
-                                  <span className="font-medium text-gray-700">{FIELD_LABELS[k] || k}:</span>
-                                  {' '}<span className="line-through text-red-400">{fmtVal(k, log.oldValues[k])}</span>
-                                  {' → '}<span className="text-green-600">{fmtVal(k, log.newValues[k])}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {log.newValues?.text && (
-                            <p className="mt-1 text-xs text-gray-500 italic">"{String(log.newValues.text).slice(0,120)}{String(log.newValues.text).length>120?'…':''}"</p>
-                          )}
+                        <div className="bg-white border border-gray-100 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Status Changes</span>
+                          <span className="text-base font-bold text-slate-800 mt-1.5">{totalStatusChanges} times</span>
+                        </div>
+                        <div className="bg-white border border-gray-100 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Longest in Status</span>
+                          <span className="text-base font-bold text-indigo-700 mt-1.5 truncate" title={maxStatusText}>{maxStatusText}</span>
                         </div>
                       </div>
-                    );
-                  });
+
+                      {/* Change Log Entries */}
+                      <div className="space-y-3">
+                        {visibleLogs.length === 0 ? (
+                          <p className="text-sm text-center text-gray-400 py-6">No changes recorded yet.</p>
+                        ) : (
+                          visibleLogs.map((log:any) => {
+                            const actionColors: Record<string,string> = {
+                              STATUS_CHANGE: 'bg-blue-100 text-blue-700',
+                              ASSIGN: 'bg-purple-100 text-purple-700',
+                              UPDATE: 'bg-gray-100 text-gray-600',
+                              COMMENT: 'bg-amber-100 text-amber-700',
+                              CREATE: 'bg-green-100 text-green-700',
+                            };
+                            const colorClass = actionColors[log.action] || 'bg-gray-100 text-gray-600';
+                            const changedKeys = (log.oldValues && log.newValues)
+                              ? Object.keys(log.newValues).filter(k =>
+                                  log.oldValues[k] !== undefined && log.oldValues[k] !== log.newValues[k]
+                                )
+                              : [];
+                            return (
+                              <div key={log.id} className="flex gap-3 text-sm border-b border-gray-50 pb-3 last:border-0">
+                                <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center flex-shrink-0 text-xs font-bold text-indigo-600">
+                                  {log.user ? `${log.user.firstName?.[0]}${log.user.lastName?.[0]}` : '⚙'}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-medium text-gray-900">{log.user ? `${log.user.firstName} ${log.user.lastName}` : 'System'}</span>
+                                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${colorClass}`}>{log.action.replace('_',' ')}</span>
+                                    <span className="text-xs text-gray-400 ml-auto">{format(new Date(log.createdAt), 'dd MMM yyyy HH:mm')}</span>
+                                  </div>
+                                  {changedKeys.length > 0 && (
+                                    <div className="mt-1 text-xs text-gray-500 space-y-0.5">
+                                      {changedKeys.map((k:string) => (
+                                        <div key={k}>
+                                          <span className="font-medium text-gray-700">{FIELD_LABELS[k] || k}:</span>
+                                          {' '}<span className="line-through text-red-400">{fmtVal(k, log.oldValues[k])}</span>
+                                          {' → '}<span className="text-green-600">{fmtVal(k, log.newValues[k])}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {log.newValues?.text && (
+                                    <p className="mt-1 text-xs text-gray-500 italic">"{String(log.newValues.text).slice(0,120)}{String(log.newValues.text).length>120?'…':''}"</p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  );
                 })()}
               </div>
             )}
