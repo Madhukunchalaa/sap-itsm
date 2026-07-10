@@ -280,6 +280,26 @@ export default function RecordsPage() {
     ) : <span className="text-xs text-gray-300">—</span>,
     className: 'w-36',
   };
+    const plantColumn: Column<any> = {
+    key: 'plant',
+    header: 'Plant',
+    render: (row) => row.plant ? (
+      <span className="text-xs font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5">
+        {row.plant}
+      </span>
+    ) : <span className="text-xs text-gray-300">—</span>,
+    className: 'w-28',
+  };
+    const clientColumn: Column<any> = {
+    key: 'customer',
+    header: 'Client',
+    render: (row) => row.customer ? (
+      <span className="text-sm font-medium text-gray-700">
+        {row.customer.companyName}
+      </span>
+    ) : <span className="text-xs text-gray-300">—</span>,
+    className: 'w-44',
+  };
 
   const tailColumns: Column<any>[] = [
     {
@@ -312,8 +332,8 @@ export default function RecordsPage() {
   ];
 
   const columns: Column<any>[] = canSeeModuleColumn
-    ? [...baseColumns, moduleColumn, ...tailColumns]
-    : [...baseColumns, ...tailColumns];
+    ? [...baseColumns,plantColumn,clientColumn, moduleColumn, ...tailColumns]
+    : [...baseColumns,plantColumn,clientColumn, ...tailColumns];
 
   // ── Sort helper ──────────────────────────────────────────────
   const sortValue = `${filters.sortBy}_${filters.sortOrder}`;
