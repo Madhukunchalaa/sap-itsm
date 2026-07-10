@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Filter, Plus, X, Download } from 'lucide-react';
-import { useRecords, useSapModules, useAgents, useUsers } from '../hooks/useApi';
+import { useRecords, useSapModules, useAgents, useUsers, useCustomers } from '../hooks/useApi';
 import { DataTable, Column } from '../components/ui/DataTable';
 import { PriorityBadge, StatusBadge, TypeBadge, SLABadge } from '../components/ui/Badges';
 import { useResolvedTicketCount } from '../hooks/useApi';
@@ -103,6 +103,12 @@ export default function RecordsPage() {
     label: `${u.firstName} ${u.lastName}`,
   }));
 
+  const { data: customersData } = useCustomers({ limit: 200 });
+  const customerOptions = (customersData?.data || []).map((c: any) => ({
+    value: c.id,
+    label: c.companyName,
+  }));
+
   // ── State from Store ───────────────────────────────────────
   const {
     filters, setFilters,
@@ -111,6 +117,7 @@ export default function RecordsPage() {
     selPriority, setSelPriority,
     selModule, setSelModule,
     selPlant, setSelPlant,
+    selCustomer, setSelCustomer,
     selAgent, setSelAgent,
     selCreator, setSelCreator,
     search, setSearch,
@@ -130,6 +137,7 @@ export default function RecordsPage() {
     priority:        selPriority.length ? (selPriority as any) : undefined,
     sapModuleId:     selModule.length   ? (selModule as any)   : undefined,
     plant:           selPlant           || undefined,
+    customerId:      selCustomer        || undefined,
     assignedAgentId: selAgent           || undefined,
     createdById:     selCreator         || undefined,
     search:          search             || undefined,
@@ -141,6 +149,7 @@ export default function RecordsPage() {
     (selPriority.length > 0 ? 1 : 0) +
     (selModule.length   > 0 ? 1 : 0) +
     (selPlant           ? 1 : 0) +
+    (selCustomer        ? 1 : 0) +
     (selAgent           ? 1 : 0) +
     (selCreator         ? 1 : 0);
 
@@ -157,6 +166,8 @@ export default function RecordsPage() {
           recordType:      selType.length     ? (selType as any)     : undefined,
           priority:        selPriority.length ? (selPriority as any) : undefined,
           sapModuleId:     selModule.length   ? (selModule as any)   : undefined,
+          plant:           selPlant           || undefined,
+          customerId:      selCustomer        || undefined,
           assignedAgentId: selAgent           || undefined,
           createdById:     selCreator         || undefined,
           search:          search             || undefined,
@@ -535,6 +546,24 @@ export default function RecordsPage() {
               <option value="SEPC - 3121">SEPC - 3121</option>
               <option value="TAQA - 2301">TAQA - 2301</option>
               <option value="2121 - Anpara">2121 - Anpara</option>
+            </select>
+          </div>
+
+          {/* Client / Customer */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
+              Client
+              {selCustomer && <span className="text-blue-600 font-semibold">1</span>}
+            </label>
+            <select
+              value={selCustomer}
+              onChange={(e) => { setSelCustomer(e.target.value); setFilters({ page: 1 }); }}
+              className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="">All Clients</option>
+              {customerOptions.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
             </select>
           </div>
 

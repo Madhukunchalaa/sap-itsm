@@ -55,7 +55,17 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
         if (!agent) { res.json(EMPTY); return; }
         const ids = await resolveManagedCustomerIds(agent.id, req.user!.tenantId);
         if (ids.length === 0) { res.json(EMPTY); return; }
-        customerIdIn = ids;
+        
+        if (q.customerId) {
+          if (ids.includes(q.customerId)) {
+            customerId = q.customerId;
+          } else {
+            res.status(403).json({ success: false, error: 'Access denied to this customer' });
+            return;
+          }
+        } else {
+          customerIdIn = ids;
+        }
         if (q.createdById) createdById = q.createdById;
         break;
       }
@@ -68,12 +78,13 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
         if (!agent) { res.json(EMPTY); return; }
         assignedAgentId = agent.id;
         if (q.createdById) createdById = q.createdById;
+        if (q.customerId) customerId = q.customerId;
         break;
       }
-      // SUPER_ADMIN / PROJECT_MANAGER: allow optional agent filter from query
       default: {
         if (q.assignedAgentId) assignedAgentId = q.assignedAgentId;
         if (q.createdById) createdById = q.createdById;
+        if (q.customerId) customerId = q.customerId;
         break;
       }
     }

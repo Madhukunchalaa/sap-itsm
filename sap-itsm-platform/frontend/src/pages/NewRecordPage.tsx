@@ -129,6 +129,19 @@ export default function NewRecordPage() {
               <Select label="Record Type" value={form.recordType} onChange={e => set('recordType', e.target.value)} options={TYPE_OPTIONS}/>
               <Select label="Priority" value={form.priority} onChange={e => set('priority', e.target.value)} options={PRIORITY_OPTIONS}/>
             </div>
+             {!isUserRole && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Customer</label>
+                  <select value={form.customerId} onChange={e => set('customerId', e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <option value="">— No Customer —</option>
+                    {customerList.map((c: any) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
+                  </select>
+                </div>
+
+              </div>
+            )}
 
             {/* Plant (Only for MEIL customer) */}
             {(() => {
@@ -188,19 +201,7 @@ export default function NewRecordPage() {
               error={errors.description} rows={6}/>
 
             {/* Customer + Contract */}
-            {!isUserRole && (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Customer</label>
-                  <select value={form.customerId} onChange={e => set('customerId', e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                    <option value="">— No Customer —</option>
-                    {customerList.map((c: any) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
-                  </select>
-                </div>
-
-              </div>
-            )}
+           
 
             {/* Agent Assignment */}
             {canAssign && (
