@@ -17,7 +17,7 @@ import { logger } from '../config/logger';
 // ---------------------------------------------------------------------------
 const AI_PROVIDER = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
 const CLAUDE_MODEL = 'claude-opus-4-8';
-const GEMINI_MODEL = 'gemini-flash-latest';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const MAX_TOOL_ROUNDS = 4;
 
 const STATUS_ENUM = [
