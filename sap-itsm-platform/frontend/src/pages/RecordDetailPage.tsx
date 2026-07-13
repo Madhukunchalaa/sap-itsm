@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MessageSquare, Timer, Paperclip, Save, X, Send, Lock, Edit2, History, Trash2, Upload, Download, XCircle } from 'lucide-react';
+import { ArrowLeft, MessageSquare, Timer, Paperclip, Save, X, Send, Lock, Edit2, History, Trash2, Upload, Download, XCircle, Sparkles, Loader2, Bot } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useRecord, useUpdateRecord, useAddComment, useAddTimeEntry, useAgents, useDeleteRecord, useCloseRecord } from '../hooks/useApi';
 import { auditApi, recordsApi } from '../api/services';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
@@ -70,6 +71,8 @@ export default function RecordDetailPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMentionPicker, setShowMentionPicker] = useState(false);
   const [mentionFilter, setMentionFilter] = useState('');
+  const [triage, setTriage] = useState<any>(null);
+  const [triageLoading, setTriageLoading] = useState(false);
 
   const loadAttachments = async () => {
     if (attachmentsLoaded) return;
@@ -88,6 +91,25 @@ export default function RecordDetailPage() {
   const canEdit = ['SUPER_ADMIN','COMPANY_ADMIN','AGENT','PROJECT_MANAGER','USER'].includes(user?.role||'');
   const canAssign = ['SUPER_ADMIN','COMPANY_ADMIN','PROJECT_MANAGER'].includes(user?.role||'');
   const canSeeInternal = ['SUPER_ADMIN', 'AGENT'].includes(user?.role||'');
+
+  // AI Triage access: SUPER_ADMIN, or an email in VITE_AI_TRIAGE_EMAILS (mirror
+  // of the backend AI_TRIAGE_EMAILS allowlist). Backend enforces this too.
+  const triageEmails = ((import.meta as any).env?.VITE_AI_TRIAGE_EMAILS || '')
+    .toLowerCase().split(',').map((e: string) => e.trim()).filter(Boolean);
+  const canTriage = user?.role === 'SUPER_ADMIN' || triageEmails.includes((user?.email||'').toLowerCase());
+  const isUnassigned = !record.assignedAgent;
+
+  const runTriage = async () => {
+    setTriageLoading(true);
+    try {
+      const res = await recordsApi.aiTriage(record.id);
+      setTriage(res.data.triage);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'AI triage failed');
+    } finally {
+      setTriageLoading(false);
+    }
+  };
   const isAgent = ['SUPER_ADMIN','COMPANY_ADMIN','AGENT','PROJECT_MANAGER'].includes(user?.role||'');
   const canLogTime = ['SUPER_ADMIN','AGENT','PROJECT_MANAGER'].includes(user?.role||'');
   const isEndUser = user?.role === 'USER';
@@ -167,6 +189,13 @@ export default function RecordDetailPage() {
         </div>
         {!editMode && (
           <div className="flex gap-2">
+            {canTriage && isUnassigned && (
+              <button onClick={runTriage} disabled={triageLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:opacity-60">
+                {triageLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : <Sparkles className="w-4 h-4"/>}
+                {triageLoading ? 'Analyzing…' : 'Analyze with AI'}
+              </button>
+            )}
             {canClose && (
               <button onClick={() => setCloseModal(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
@@ -198,6 +227,65 @@ export default function RecordDetailPage() {
           </div>
         )}
       </div>
+
+      {/* ── AI Triage suggestion (suggestion only — no changes are applied) ── */}
+      {triage && (
+        <Card>
+          <div className="p-5 border-l-4 border-l-violet-500 space-y-4">
+            <div className="flex items-center gap-2">
+              <Bot className="w-5 h-5 text-violet-600"/>
+              <h3 className="text-sm font-semibold text-gray-800">AI Triage Suggestion</h3>
+              <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">
+                {triage.confidence} confidence
+              </span>
+              <span className="ml-auto text-[11px] text-gray-400">Suggestion only — nothing has been changed</span>
+            </div>
+
+            {triage.rootCause && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-1">Likely root cause</p>
+                <p className="text-sm text-gray-700">{triage.rootCause}</p>
+              </div>
+            )}
+
+            {triage.suggestedSolution && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-1">Suggested solution</p>
+                <p className="text-sm text-gray-700 whitespace-pre-wrap">{triage.suggestedSolution}</p>
+              </div>
+            )}
+
+            {Array.isArray(triage.sapTcodes) && triage.sapTcodes.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-1">Relevant T-codes</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {triage.sapTcodes.map((t: string) => (
+                    <span key={t} className="text-xs font-mono px-2 py-0.5 rounded bg-gray-100 text-gray-700">{t}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-6 pt-1">
+              {triage.recommendedAgent && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 mb-1">Recommended agent</p>
+                  <p className="text-sm text-gray-800 font-medium">{triage.recommendedAgent.name}</p>
+                  <p className="text-xs text-gray-500">{triage.recommendedAgent.reason}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-1">Suggested priority</p>
+                <p className="text-sm text-gray-800 font-medium">{triage.suggestedPriority}</p>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-gray-400 pt-1">
+              To apply any of this, use <span className="font-medium">Edit</span> to assign the agent or change priority yourself.
+            </p>
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left: Main Content */}

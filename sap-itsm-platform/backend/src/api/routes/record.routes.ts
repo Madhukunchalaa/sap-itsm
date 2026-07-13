@@ -9,6 +9,8 @@ import {
   createRecord, listRecords, getRecord, updateRecord, addComment, addTimeEntry, deleteRecord,
 } from '../../services/record.service';
 import { prisma } from '../../config/database';
+import { generateTriage } from '../../services/chat.service';
+import { AppError } from '../../utils/AppError';
 import { resolveAgent, resolveManagedCustomerIds } from './scopeHelpers';
 import { buildPaginatedResult } from '../../utils/pagination';
 import multer from 'multer';
@@ -22,6 +24,33 @@ const router = Router();
 router.use(verifyJWT, enforceTenantScope);
 
 const EMPTY = { success: true, ...buildPaginatedResult([], 0, 1, 20) };
+
+// ─────────────────────────────────────────────────────────────
+// AI Triage — analyze a ticket and propose a solution + best agent.
+// Access: SUPER_ADMIN always, plus any email listed in AI_TRIAGE_EMAILS
+// (comma-separated). Suggestion only — never writes to the ticket.
+// ─────────────────────────────────────────────────────────────
+const TRIAGE_ALLOWED = (process.env.AI_TRIAGE_EMAILS || '')
+  .split(',')
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
+
+function canTriage(req: Request): boolean {
+  const u = req.user!;
+  return u.role === 'SUPER_ADMIN' || TRIAGE_ALLOWED.includes((u.email || '').toLowerCase());
+}
+
+router.post('/:id/ai-triage', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!canTriage(req)) {
+      throw new AppError('Access denied. AI triage is limited to Super Admin and authorized users.', 403);
+    }
+    const triage = await generateTriage(req.user!.tenantId, req.params.id);
+    res.json({ success: true, triage });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ─────────────────────────────────────────────────────────────
 // GET /records — list with role-based scoping

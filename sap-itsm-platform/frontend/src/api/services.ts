@@ -52,6 +52,8 @@ export const recordsApi = {
   list: (filters: RecordFilters = {}) =>
     apiClient.get('/records', { params: filters }),
 
+  aiTriage: (id: string) => apiClient.post(`/records/${id}/ai-triage`),
+
   get: (id: string) => apiClient.get(`/records/${id}`),
 
   create: (data: object) => apiClient.post('/records', data),
