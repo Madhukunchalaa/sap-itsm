@@ -14,6 +14,7 @@ import { formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useResolvedTicketCount } from '../../hooks/useApi';
 import { RestrictionModal } from '../records/RestrictionModal';
+import { ChatWidget } from '../chat/ChatWidget';
 
 /* ── nav structure ─────────────────────────────────────────────
    Top-level items that appear directly in the navbar.
@@ -339,6 +340,9 @@ export default function AppLayout() {
       <main className="flex-1 overflow-y-auto bg-gray-50">
         <Outlet />
       </main>
+
+      {/* ── AI Assistant (floating, bottom-left) ─────────────── */}
+      <ChatWidget />
     </div>
   );
 }

@@ -19,6 +19,8 @@ const createUserSchema = z.object({
     firstName: z.string().min(1).max(100),
     lastName: z.string().min(1).max(100),
     role: z.enum(['SUPER_ADMIN', 'COMPANY_ADMIN', 'USER', 'AGENT', 'PROJECT_MANAGER']),
+    sapModuleId: z.string().uuid().optional(),
+    customerId: z.string().uuid().optional(),
   }),
 });
 
@@ -76,8 +78,9 @@ router.get('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'), 
         select: {
           id: true, email: true, firstName: true, lastName: true,
           role: true, status: true, lastLoginAt: true, createdAt: true,
-          customerId: true,
+          customerId: true, sapModuleId: true,
           customer: { select: { id: true, companyName: true } },
+          sapModule: { select: { id: true, name: true, code: true } },
           agent: { select: { id: true, level: true, status: true } },
           _count: { select: { createdRecords: true } },
         },
@@ -93,7 +96,7 @@ router.get('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'), 
 // POST /users
 router.post('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'), validate(createUserSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { email, password, firstName, lastName, role, customerId } = req.body;
+    const { email, password, firstName, lastName, role, customerId, sapModuleId } = req.body;
 
     // Domain validation: if customer has allowedDomains, validate email domain
     const resolvedCustomerId = customerId || req.user!.customerId;
@@ -123,6 +126,7 @@ router.post('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'),
         tenantId:   req.user!.tenantId,
         status:     'ACTIVE',
         customerId: customerId || undefined,
+        sapModuleId: sapModuleId || undefined,
       },
       select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true, createdAt: true },
     });
@@ -170,9 +174,13 @@ router.patch('/:id', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGE
         res.status(403).json({ success: false, error: 'Access denied' }); return;
       }
     }
-    const allowed = ['firstName', 'lastName', 'email', 'role', 'status', 'customerId'];
+    const allowed = ['firstName', 'lastName', 'email', 'role', 'status', 'customerId', 'sapModuleId'];
     const data: Record<string, unknown> = {};
-    for (const k of allowed) if (req.body[k] !== undefined) data[k] = req.body[k];
+    for (const k of allowed) {
+      if (req.body[k] !== undefined) {
+        data[k] = req.body[k] === '' ? null : req.body[k];
+      }
+    }
     if (data.email) data.email = (data.email as string).toLowerCase().trim();
     if (req.body.password) {
       (data as any).passwordHash = await bcrypt.hash(req.body.password, bcryptRounds);

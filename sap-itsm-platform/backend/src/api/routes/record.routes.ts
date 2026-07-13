@@ -42,6 +42,7 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
     let customerIdIn:    string[] | undefined;
     let createdById:     string | undefined;
     let assignedAgentId: string | undefined;
+    let userOrModulesFilter: { createdById: string; customerId: string; sapModuleId: string } | undefined;
 
     switch (role) {
       case 'COMPANY_ADMIN': {
@@ -70,7 +71,16 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
         break;
       }
       case 'USER': {
-        createdById = req.user!.sub;
+        const fullUser = await prisma.user.findUnique({ where: { id: req.user!.sub }, select: { sapModuleId: true, customerId: true } });
+        if (fullUser?.sapModuleId && fullUser?.customerId) {
+          userOrModulesFilter = {
+            createdById: req.user!.sub,
+            customerId: fullUser.customerId,
+            sapModuleId: fullUser.sapModuleId
+          };
+        } else {
+          createdById = req.user!.sub;
+        }
         break;
       }
       case 'AGENT': {
@@ -112,6 +122,7 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
       createdById:     createdById,
       assignedAgentId: assignedAgentId,
       sapModuleIdIn:   sapModuleIdIn.length ? sapModuleIdIn : undefined,
+      userOrModulesFilter,
       plant:           q.plant,
       search:          q.search,
       sortBy:          q.sortBy,
@@ -159,6 +170,14 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       }
       case 'USER': {
         if (record.createdBy?.id !== userId) {
+          const fullUser = await prisma.user.findUnique({ where: { id: userId }, select: { sapModuleId: true, customerId: true } });
+          if (
+            fullUser?.sapModuleId &&
+            fullUser.sapModuleId === record.sapModuleId &&
+            fullUser.customerId === record.customerId
+          ) {
+            break; // Access granted via module assignment
+          }
           res.status(403).json({ success: false, error: 'Access denied' }); return;
         }
         break;

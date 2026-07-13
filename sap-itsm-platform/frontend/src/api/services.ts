@@ -42,6 +42,12 @@ export interface RecordFilters {
   to?: string;
 }
 
+// ── Chat / AI Assistant API ──────────────────────────────────
+export const chatApi = {
+  sendMessage: (message: string, history: any[] = []) =>
+    apiClient.post('/chat', { message, history }),
+};
+
 export const recordsApi = {
   list: (filters: RecordFilters = {}) =>
     apiClient.get('/records', { params: filters }),
