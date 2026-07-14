@@ -63,6 +63,12 @@ export const recordsApi = {
   addComment: (id: string, text: string, internalFlag = false) =>
     apiClient.post(`/records/${id}/comment`, { text, internalFlag }),
 
+  updateComment: (id: string, commentId: string, text: string) =>
+    apiClient.patch(`/records/${id}/comment/${commentId}`, { text }),
+
+  deleteComment: (id: string, commentId: string) =>
+    apiClient.delete(`/records/${id}/comment/${commentId}`),
+
   addTimeEntry: (id: string, data: { hours: number; description: string; workDate: string }) =>
     apiClient.post(`/records/${id}/time-entry`, data),
 

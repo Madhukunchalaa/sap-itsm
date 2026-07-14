@@ -344,7 +344,7 @@ export async function getRecord(id: string, tenantId: string) {
       ...RECORD_SELECT,
       comments: {
         select: {
-          id: true, text: true, internalFlag: true, createdAt: true,
+          id: true, text: true, internalFlag: true, createdAt: true, updatedAt: true,
           author: { select: { id: true, firstName: true, lastName: true, role: true } },
         },
         orderBy: { createdAt: 'asc' },
@@ -489,6 +489,54 @@ export async function updateRecord(
   }
 
   return updated;
+}
+
+export async function updateComment(
+  recordId: string, commentId: string, tenantId: string, userId: string, text: string
+) {
+  const comment = await prisma.comment.findFirst({
+    where: { id: commentId, recordId, record: { tenantId } },
+  });
+  if (!comment) throw new AppError('Comment not found', 404, 'NOT_FOUND');
+  if (comment.authorId !== userId) {
+    throw new AppError('You can only edit your own comments', 403, 'FORBIDDEN');
+  }
+
+  const updated = await prisma.comment.update({
+    where: { id: commentId },
+    data: { text },
+    include: { author: { select: { id: true, firstName: true, lastName: true, role: true } } },
+  });
+
+  await cache.del(`record:${recordId}`);
+  await auditLog({
+    tenantId, userId, recordId,
+    action: 'UPDATE', entityType: 'Comment', entityId: commentId,
+    oldValues: { length: comment.text.length },
+    newValues: { length: text.length },
+  });
+  return updated;
+}
+
+export async function deleteComment(
+  recordId: string, commentId: string, tenantId: string, userId: string, userRole: string
+) {
+  const comment = await prisma.comment.findFirst({
+    where: { id: commentId, recordId, record: { tenantId } },
+  });
+  if (!comment) throw new AppError('Comment not found', 404, 'NOT_FOUND');
+  if (comment.authorId !== userId && userRole !== 'SUPER_ADMIN') {
+    throw new AppError('You can only delete your own comments', 403, 'FORBIDDEN');
+  }
+
+  await prisma.comment.delete({ where: { id: commentId } });
+  await cache.del(`record:${recordId}`);
+  await auditLog({
+    tenantId, userId, recordId,
+    action: 'DELETE', entityType: 'Comment', entityId: commentId,
+    oldValues: { authorId: comment.authorId, length: comment.text.length },
+  });
+  return { deleted: true };
 }
 
 export async function addComment(

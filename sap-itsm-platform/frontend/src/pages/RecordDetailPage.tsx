@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, MessageSquare, Timer, Paperclip, Save, X, Send, Lock, Edit2, History, Trash2, Upload, Download, XCircle, Sparkles, Loader2, Bot } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useQueryClient } from '@tanstack/react-query';
 import { useRecord, useUpdateRecord, useAddComment, useAddTimeEntry, useAgents, useDeleteRecord, useCloseRecord } from '../hooks/useApi';
 import { auditApi, recordsApi } from '../api/services';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
@@ -73,6 +74,37 @@ export default function RecordDetailPage() {
   const [mentionFilter, setMentionFilter] = useState('');
   const [triage, setTriage] = useState<any>(null);
   const [triageLoading, setTriageLoading] = useState(false);
+  const queryClient = useQueryClient();
+  const [editingCommentId, setEditingCommentId] = useState<string|null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
+  const [deletingCommentId, setDeletingCommentId] = useState<string|null>(null);
+  const [commentBusy, setCommentBusy] = useState(false);
+
+  const saveCommentEdit = async (commentId: string) => {
+    const plain = editingCommentText.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+    if (!plain) { toast.error('Comment cannot be empty'); return; }
+    setCommentBusy(true);
+    try {
+      await recordsApi.updateComment(id!, commentId, editingCommentText);
+      await queryClient.invalidateQueries({ queryKey: ['record', id] });
+      setEditingCommentId(null);
+      toast.success('Comment updated');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to update comment');
+    } finally { setCommentBusy(false); }
+  };
+
+  const confirmDeleteComment = async (commentId: string) => {
+    setCommentBusy(true);
+    try {
+      await recordsApi.deleteComment(id!, commentId);
+      await queryClient.invalidateQueries({ queryKey: ['record', id] });
+      setDeletingCommentId(null);
+      toast.success('Comment deleted');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to delete comment');
+    } finally { setCommentBusy(false); }
+  };
 
   const loadAttachments = async () => {
     if (attachmentsLoaded) return;
@@ -388,8 +420,13 @@ export default function RecordDetailPage() {
             {activeTab==='comments' && (
               <div className="p-4 space-y-4">
                 {(record.comments||[]).length===0 && <p className="text-sm text-center text-gray-400 py-6">No comments yet.</p>}
-                {(record.comments||[]).map((c:any) => (
-                  <div key={c.id} className="flex gap-3">
+                {(record.comments||[]).map((c:any) => {
+                  const isOwn = c.author?.id === user?.id;
+                  const canEditComment = isOwn;
+                  const canDeleteComment = isOwn || user?.role === 'SUPER_ADMIN';
+                  const isEdited = c.updatedAt && new Date(c.updatedAt).getTime() - new Date(c.createdAt).getTime() > 2000;
+                  return (
+                  <div key={c.id} className="flex gap-3 group">
                     <div className="w-8 h-8 rounded-full bg-slate-700 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
                       {c.author.firstName[0]}{c.author.lastName[0]}
                     </div>
@@ -401,14 +438,65 @@ export default function RecordDetailPage() {
                             <Lock className="w-3 h-3"/> Internal
                           </span>
                         )}
+                        {isEdited && <span className="text-[11px] text-gray-400 italic">(edited)</span>}
                         <span className="text-xs text-gray-400 ml-auto">{formatDistanceToNow(new Date(c.createdAt),{addSuffix:true})}</span>
+                        {editingCommentId !== c.id && deletingCommentId !== c.id && (canEditComment || canDeleteComment) && (
+                          <span className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {canEditComment && (
+                              <button title="Edit comment"
+                                onClick={() => { setEditingCommentId(c.id); setEditingCommentText(c.text); setDeletingCommentId(null); }}
+                                className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50">
+                                <Edit2 className="w-3.5 h-3.5"/>
+                              </button>
+                            )}
+                            {canDeleteComment && (
+                              <button title="Delete comment"
+                                onClick={() => { setDeletingCommentId(c.id); setEditingCommentId(null); }}
+                                className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50">
+                                <Trash2 className="w-3.5 h-3.5"/>
+                              </button>
+                            )}
+                          </span>
+                        )}
                       </div>
-                      <div className={`text-sm text-gray-700 bg-gray-50 rounded-xl px-4 py-3 ${c.internalFlag?'border border-amber-200':''} prose prose-sm max-w-none`}
-                        dangerouslySetInnerHTML={{ __html: c.text }}
-                      />
+
+                      {editingCommentId === c.id ? (
+                        <div className="space-y-2">
+                          <ReactQuill value={editingCommentText} onChange={setEditingCommentText} theme="snow"/>
+                          <div className="flex gap-2 justify-end">
+                            <button onClick={() => setEditingCommentId(null)} disabled={commentBusy}
+                              className="px-3 py-1 text-xs border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">
+                              Cancel
+                            </button>
+                            <button onClick={() => saveCommentEdit(c.id)} disabled={commentBusy}
+                              className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-60">
+                              {commentBusy ? 'Saving…' : 'Save'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className={`text-sm text-gray-700 bg-gray-50 rounded-xl px-4 py-3 ${c.internalFlag?'border border-amber-200':''} prose prose-sm max-w-none`}
+                          dangerouslySetInnerHTML={{ __html: c.text }}
+                        />
+                      )}
+
+                      {deletingCommentId === c.id && (
+                        <div className="mt-2 flex items-center gap-2 text-xs bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                          <span className="text-red-700">Delete this comment permanently?</span>
+                          <button onClick={() => confirmDeleteComment(c.id)} disabled={commentBusy}
+                            className="ml-auto px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-60">
+                            {commentBusy ? 'Deleting…' : 'Delete'}
+                          </button>
+                          <button onClick={() => setDeletingCommentId(null)} disabled={commentBusy}
+                            className="px-2.5 py-1 border border-gray-300 rounded text-gray-600 hover:bg-white">
+                            Cancel
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
                 <div className="border-t border-gray-100 pt-4">
                   <div className="relative">
                     <ReactQuill

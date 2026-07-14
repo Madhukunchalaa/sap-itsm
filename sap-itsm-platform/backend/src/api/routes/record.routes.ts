@@ -6,7 +6,7 @@ import {
   addCommentSchema, addTimeEntrySchema,
 } from '../validators/record.validators';
 import {
-  createRecord, listRecords, getRecord, updateRecord, addComment, addTimeEntry, deleteRecord,
+  createRecord, listRecords, getRecord, updateRecord, addComment, updateComment, deleteComment, addTimeEntry, deleteRecord,
 } from '../../services/record.service';
 import { prisma } from '../../config/database';
 import { generateTriage } from '../../services/chat.service';
@@ -340,6 +340,34 @@ router.post('/:id/comment', validate(addCommentSchema),
         req.body.text, req.body.internalFlag ?? false,
       );
       res.status(201).json({ success: true, comment });
+    } catch (err) { next(err); }
+  }
+);
+
+// ─────────────────────────────────────────────────────────────
+// PATCH /records/:id/comment/:commentId — edit own comment
+// DELETE /records/:id/comment/:commentId — own comment, or SUPER_ADMIN
+// ─────────────────────────────────────────────────────────────
+router.patch('/:id/comment/:commentId',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const text = String(req.body.text || '').trim();
+      if (!text) throw new AppError('Comment text is required', 400, 'VALIDATION');
+      const comment = await updateComment(
+        req.params.id, req.params.commentId, req.user!.tenantId, req.user!.sub, req.body.text,
+      );
+      res.json({ success: true, comment });
+    } catch (err) { next(err); }
+  }
+);
+
+router.delete('/:id/comment/:commentId',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await deleteComment(
+        req.params.id, req.params.commentId, req.user!.tenantId, req.user!.sub, req.user!.role,
+      );
+      res.json({ success: true });
     } catch (err) { next(err); }
   }
 );
