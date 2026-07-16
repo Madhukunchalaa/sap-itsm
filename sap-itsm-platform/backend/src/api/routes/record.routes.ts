@@ -55,6 +55,7 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
         const ids = await resolveManagedCustomerIds(agent.id, req.user!.tenantId);
         if (ids.length === 0) { res.json(EMPTY); return; }
         customerIdIn = ids;
+        if (q.assignedAgentId) assignedAgentId = q.assignedAgentId;
         break;
       }
       case 'USER': {
