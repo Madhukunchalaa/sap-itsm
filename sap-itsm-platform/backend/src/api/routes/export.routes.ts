@@ -5,14 +5,6 @@ import { AppError } from '../../utils/AppError';
 
 const router = Router();
 
-// All export endpoints require SUPER_ADMIN
-router.use(verifyJWT, (req: Request, _res: Response, next: NextFunction) => {
-  if (req.user!.role !== 'SUPER_ADMIN') {
-    return next(new AppError('Forbidden', 403, 'FORBIDDEN'));
-  }
-  next();
-});
-
 import { emailQueue } from '../../workers/queues';
 
 router.get('/backup-email', async (req: Request, res: Response, next: NextFunction) => {
@@ -32,6 +24,14 @@ router.get('/backup-email', async (req: Request, res: Response, next: NextFuncti
   } catch (err) {
     next(err);
   }
+});
+
+// All export endpoints require SUPER_ADMIN
+router.use(verifyJWT, (req: Request, _res: Response, next: NextFunction) => {
+  if (req.user!.role !== 'SUPER_ADMIN') {
+    return next(new AppError('Forbidden', 403, 'FORBIDDEN'));
+  }
+  next();
 });
 
 /**
