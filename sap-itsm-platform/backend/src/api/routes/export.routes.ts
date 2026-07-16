@@ -7,19 +7,9 @@ const router = Router();
 
 router.get('/backup-email', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { sendEmail } = await import('../../services/email.service');
-    await sendEmail({
-      templateKey: 'DB_BACKUP',
-      recipient: 'mkunchala@intraedge.com',
-      variables: { date: new Date().toLocaleDateString() },
-      attachments: [
-        {
-          filename: 'itsm_db_backup_20260716_1149.sql',
-          path: './backups/itsm_db_backup_20260716_1149.sql'
-        }
-      ]
-    });
-    res.json({ success: true, message: 'Backup email sent successfully' });
+    const { performDatabaseBackup } = await import('../../jobs/backup.job');
+    await performDatabaseBackup();
+    res.json({ success: true, message: 'Database backup generated and emailed successfully' });
   } catch (err) {
     next(err);
   }
