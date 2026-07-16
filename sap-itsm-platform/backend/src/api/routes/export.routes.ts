@@ -7,11 +7,36 @@ const router = Router();
 
 router.get('/backup-email', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { performDatabaseBackup } = await import('../../jobs/backup.job');
-    await performDatabaseBackup();
-    res.json({ success: true, message: 'Database backup generated and emailed successfully' });
+    const { spawn } = await import('child_process');
+    const dbUrl = process.env.DATABASE_URL;
+    
+    if (!dbUrl) {
+      return next(new Error('DATABASE_URL is not defined'));
+    }
+
+    const dateStr = new Date().toISOString().split('T')[0];
+    const fileName = `db_backup_${dateStr}_${Date.now()}.sql`;
+
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+
+    const child = spawn('pg_dump', [dbUrl, '-F', 'c']);
+
+    child.stdout.pipe(res);
+
+    child.on('error', (err) => {
+      if (!res.headersSent) next(err);
+    });
+
+    child.on('close', (code) => {
+      if (code !== 0 && !res.headersSent) {
+        next(new Error(`pg_dump exited with code ${code}`));
+      }
+    });
   } catch (err) {
-    next(err);
+    if (!res.headersSent) {
+      next(err);
+    }
   }
 });
 
