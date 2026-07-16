@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { listRecords, getRecord } from './record.service';
+import { findSimilarTickets } from './rag.service';
 import { AppError } from '../utils/AppError';
 import { prisma } from '../config/database';
 import { getKnowledge } from './knowledge.service';
@@ -65,6 +66,20 @@ const TOOL_DEFS = [
       properties: { level: { type: 'string', enum: ['L1', 'L2', 'L3', 'SPECIALIST'], description: 'Optional: filter by agent level' } },
     },
   },
+  {
+    name: 'find_similar_tickets',
+    description:
+      'Semantic search over past RESOLVED/CLOSED tickets and their resolution notes. ' +
+      'Use when the user describes a problem and wants a known solution, or asks ' +
+      '"have we seen this before?". Returns the most similar past tickets including how they were resolved.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Description of the problem to match against past tickets' },
+      },
+      required: ['query'],
+    },
+  },
 ];
 
 // ---- Tool executors (all read-only) ---------------------------------------
@@ -125,6 +140,13 @@ async function runTool(name: string, input: any, ctx: { tenantId: string; userId
         status: a.status,
       }));
     }
+    case 'find_similar_tickets': {
+      const sims = await findSimilarTickets(ctx.tenantId, String(input.query || ''), 5);
+      if (!sims.length) {
+        return { info: 'No similar past tickets found (the RAG index may be empty — a Super Admin can rebuild it via the AI train action).' };
+      }
+      return sims.map((s) => ({ relevance: Number(s.similarity.toFixed(2)), details: s.content }));
+    }
     default:
       return { error: `Unknown tool: ${name}` };
   }
@@ -147,7 +169,8 @@ You are talking to ${userName}.
 
 WHAT YOU CAN DO:
 - Answer questions about tickets by calling the read-only tools (list_tickets, get_ticket, list_agents).
-- ANALYZE tickets and PROPOSE SOLUTIONS. This is your core job: when asked for a solution, fix, or analysis of a ticket, call get_ticket first, then give (1) the likely root cause, (2) concrete step-by-step resolution an SAP L2 engineer could follow, and (3) relevant SAP T-codes. Never refuse to suggest a solution — suggesting is always allowed.
+- ANALYZE tickets and PROPOSE SOLUTIONS. This is your core job: when asked for a solution, fix, or analysis of a ticket, call get_ticket first, then call find_similar_tickets with the problem description to check how similar past tickets were resolved, then give (1) the likely root cause, (2) concrete step-by-step resolution an SAP L2 engineer could follow — citing the past ticket (e.g. "as done in REQ-2026-0041") when a precedent matches, and (3) relevant SAP T-codes. Never refuse to suggest a solution — suggesting is always allowed.
+- Search resolution history: when the user describes any problem, use find_similar_tickets to surface how similar issues were solved before.
 - Help with general SAP and ITSM "how do I…" questions: T-codes, root causes, troubleshooting steps.
 
 RULES:
@@ -327,12 +350,35 @@ export async function generateTriage(tenantId: string, recordId: string): Promis
     level: a.level, specialization: a.specialization, status: a.status,
   }));
 
-  const similar = await listRecords({
-    tenantId, page: 1, limit: 5,
-    ...(record.sapModuleId && { sapModuleId: record.sapModuleId }),
-    statusIn: ['RESOLVED', 'CLOSED'],
-  } as any);
-  const precedents = (similar.data as any[]).filter((r) => r.id !== record.id).map((r) => ({ ticket: r.recordNumber, title: r.title }));
+  // RAG: semantically similar resolved tickets, including their resolution
+  // notes — the model grounds its solution in how WE actually fixed these.
+  let precedentsBlock = '';
+  try {
+    const sims = await findSimilarTickets(
+      tenantId,
+      `${record.title}\n${(record.description || '').replace(/<[^>]*>/g, ' ')}`,
+      4,
+      record.id,
+    );
+    if (sims.length) {
+      precedentsBlock = sims
+        .map((s) => `--- similar past ticket (relevance ${(s.similarity * 100).toFixed(0)}%)\n${s.content}`)
+        .join('\n');
+    }
+  } catch (err: any) {
+    logger.warn(`RAG retrieval failed, falling back to module recents: ${err.message}`);
+  }
+  if (!precedentsBlock) {
+    const similar = await listRecords({
+      tenantId, page: 1, limit: 5,
+      ...(record.sapModuleId && { sapModuleId: record.sapModuleId }),
+      statusIn: ['RESOLVED', 'CLOSED'],
+    } as any);
+    precedentsBlock = (similar.data as any[])
+      .filter((r) => r.id !== record.id)
+      .map((r) => `- ${r.recordNumber}: ${r.title}`)
+      .join('\n') || '- (none)';
+  }
 
   const prompt = `Analyze this SAP ITSM ticket and produce a triage recommendation.
 
@@ -347,8 +393,8 @@ TICKET
 AVAILABLE AGENTS (pick the single best match for module + level + availability):
 ${agentList.map((a) => `- ${a.name} — ${a.level}, ${a.specialization || 'general'}, ${a.status}`).join('\n') || '- (no agents registered)'}
 
-RESOLVED PRECEDENTS in this module (for pattern reference):
-${precedents.map((p) => `- ${p.ticket}: ${p.title}`).join('\n') || '- (none)'}
+SIMILAR RESOLVED TICKETS from this system (ground your solution in these resolution notes when they match, and cite the ticket number):
+${precedentsBlock}
 
 Respond with ONLY a JSON object (no prose, no markdown fences) with exactly these keys:
 {

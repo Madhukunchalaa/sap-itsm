@@ -119,6 +119,24 @@ async function bootstrap() {
     app.listen(PORT, '0.0.0.0', () => {
       logger.info(`✅ Server running on port ${PORT} [${process.env.NODE_ENV}]`);
     });
+
+    // RAG index: build/refresh in the background on boot (unchanged tickets are
+    // skipped, so this only embeds new/edited resolutions), then daily at 02:30.
+    if (process.env.GEMINI_API_KEY) {
+      const { indexResolvedTickets } = await import('./services/rag.service');
+      const indexAllTenants = async () => {
+        const tenants = await prisma.tenant.findMany({ select: { id: true } });
+        for (const t of tenants) {
+          await indexResolvedTickets(t.id).catch((e) =>
+            logger.warn(`RAG index failed for tenant ${t.id}: ${e.message}`));
+        }
+      };
+      setTimeout(() => { indexAllTenants().catch(() => null); }, 15_000);
+      const cron = await import('node-cron');
+      cron.schedule('30 2 * * *', () => { indexAllTenants().catch(() => null); });
+    } else {
+      logger.info('ℹ️  GEMINI_API_KEY not set — RAG indexing disabled');
+    }
   } catch (error) {
     logger.error('❌ Startup failed:', error);
     process.exit(1);
