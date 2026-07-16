@@ -31,6 +31,7 @@ export interface RecordFilters {
   status?: string | string[];
   priority?: string | string[];
   assignedAgentId?: string;
+  createdById?: string;
   customerId?: string;
   sapModuleId?: string | string[];
   plant?: string;
@@ -41,9 +42,17 @@ export interface RecordFilters {
   to?: string;
 }
 
+// ── Chat / AI Assistant API ──────────────────────────────────
+export const chatApi = {
+  sendMessage: (message: string, history: any[] = []) =>
+    apiClient.post('/chat', { message, history }),
+};
+
 export const recordsApi = {
   list: (filters: RecordFilters = {}) =>
     apiClient.get('/records', { params: filters }),
+
+  aiTriage: (id: string) => apiClient.post(`/records/${id}/ai-triage`),
 
   get: (id: string) => apiClient.get(`/records/${id}`),
 
@@ -53,6 +62,12 @@ export const recordsApi = {
 
   addComment: (id: string, text: string, internalFlag = false) =>
     apiClient.post(`/records/${id}/comment`, { text, internalFlag }),
+
+  updateComment: (id: string, commentId: string, text: string) =>
+    apiClient.patch(`/records/${id}/comment/${commentId}`, { text }),
+
+  deleteComment: (id: string, commentId: string) =>
+    apiClient.delete(`/records/${id}/comment/${commentId}`),
 
   addTimeEntry: (id: string, data: { hours: number; description: string; workDate: string }) =>
     apiClient.post(`/records/${id}/time-entry`, data),
@@ -210,7 +225,7 @@ export const assignmentRulesApi = {
 
 // ── Dashboard API ─────────────────────────────────────────────
 export const dashboardApi = {
-  overview: () => apiClient.get('/dashboard'),
+  overview: (plant?: string) => apiClient.get('/dashboard', { params: { plant } }),
   pm: () => apiClient.get('/dashboard/pm'),
   customer: () => apiClient.get('/dashboard/customer'),
   agent: () => apiClient.get('/dashboard/agent'),

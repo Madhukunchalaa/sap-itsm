@@ -14,13 +14,28 @@ import { PriorityBadge, StatusBadge, TypeBadge, SLABadge } from '../components/u
 import { formatDistanceToNow, format } from 'date-fns';
 import { useAuthStore } from '../store/auth.store';
 
-const PIE_COLORS = ['#3b82f6','#f59e0b','#8b5cf6','#10b981','#ef4444','#6b7280'];
+const PIE_COLORS = ['#3b82f6','#ef4444','#f59e0b','#10b981','#8b5cf6','#6b7280'];
+
+const RADIAN = Math.PI / 180;
+const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
+  if (percent < 0.05) return null; // Don't show label if less than 5%
+  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+  return (
+    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight="bold">
+      {`${(percent * 100).toFixed(0)}%`}
+    </text>
+  );
+};
+
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
   const role = user?.role;
 
-  if (role === 'PROJECT_MANAGER') return <PMDashboard />;
+  // if (role === 'PROJECT_MANAGER') return <PMDashboard />; // Now PM uses AdminDashboard
   if (role === 'COMPANY_ADMIN') return <CustomerDashboard />;
   if (role === 'AGENT') return <AgentDashboard />;
   if (role === 'USER') return <UserDashboard />;
@@ -30,7 +45,8 @@ export default function DashboardPage() {
 function AdminDashboard() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { data: dashboard, isLoading, refetch, dataUpdatedAt } = useDashboard();
+  const [plantFilter, setPlantFilter] = React.useState<string>('');
+  const { data: dashboard, isLoading, refetch, dataUpdatedAt } = useDashboard(plantFilter || undefined);
 
   if (isLoading) return <LoadingSpinner fullscreen label="Loading dashboard…" />;
   if (!dashboard) return (
@@ -47,6 +63,8 @@ function AdminDashboard() {
   const statusData = d?.byStatus?.map((s: any) => ({ name: s.status.replace('_', ' '), value: s.count })) || [];
   const priorityData = d?.byPriority?.map((p: any) => ({ name: p.priority, count: p.count })) || [];
   const typeData = d?.byType?.map((t: any) => ({ name: t.type, value: t.count })) || [];
+  const plantData = d?.byPlant?.map((p: any) => ({ name: p.plant, value: p.count })) || [];
+  const moduleData = d?.byModule?.map((m: any) => ({ name: m.code, value: m.count })) || [];
   const trendData = d?.monthlyTrend?.map((t: any) => ({
     day: new Date(t.day).toLocaleDateString('en', { month: 'short', day: 'numeric' }),
     total: Number(t.total),
@@ -59,13 +77,25 @@ function AdminDashboard() {
         title={`Good ${getGreeting()}, ${user?.firstName} 👋`}
         subtitle="Here's what's happening in your service desk"
         actions={
-          <button
-            onClick={() => refetch()}
-            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Refresh {lastUpdated && <span className="text-xs text-gray-400">({lastUpdated})</span>}
-          </button>
+          <div className="flex items-center gap-3">
+            <select
+              value={plantFilter}
+              onChange={(e) => setPlantFilter(e.target.value)}
+              className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[140px]"
+            >
+              <option value="">All Plants</option>
+              <option value="SEPC - 3121">SEPC - 3121</option>
+              <option value="TAQA - 2301">TAQA - 2301</option>
+              <option value="2121 - Anpara">2121 - Anpara</option>
+            </select>
+            <button
+              onClick={() => refetch()}
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Refresh {lastUpdated && <span className="text-xs text-gray-400">({lastUpdated})</span>}
+            </button>
+          </div>
         }
       />
 
@@ -127,25 +157,70 @@ function AdminDashboard() {
           <div className="p-4">
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
-                <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
                   {statusData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                 </Pie>
                 <Tooltip />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
         </Card>
+
+        {/* Tickets by SAP Module */}
+        <Card title="By SAP Module">
+          <div className="p-4">
+            {moduleData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie data={moduleData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
+                    {moduleData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                  </Pie>
+                <Tooltip />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
+              </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="text-xs text-gray-400 text-center py-16">No module data</p>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      {/* ── Charts Row 2 ──────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Tickets by Plant (Only show if 'All Plants' is selected) */}
+        {!plantFilter && (
+          <Card title="By Plant">
+            <div className="p-4">
+              {plantData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie data={plantData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
+                      {plantData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                    </Pie>
+                <Tooltip />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
+              </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-xs text-gray-400 text-center py-16">No plant data</p>
+              )}
+            </div>
+          </Card>
+        )}
 
         {/* Record type */}
         <Card title="By Record Type">
           <div className="p-4">
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
-                <Pie data={typeData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80}>
+                <Pie data={typeData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
                   {typeData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                 </Pie>
                 <Tooltip />
-                <Legend />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
+               <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -162,7 +237,7 @@ function AdminDashboard() {
                 <XAxis dataKey="day" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip />
-                <Legend />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
                 <Line type="monotone" dataKey="total"    stroke="#3b82f6" strokeWidth={2} dot={false} name="Created" />
                 <Line type="monotone" dataKey="resolved" stroke="#10b981" strokeWidth={2} dot={false} name="Resolved" />
               </LineChart>
@@ -262,7 +337,7 @@ function PMDashboard() {
           <div className="p-4"><ResponsiveContainer width="100%" height={200}>
             <BarChart data={customerChartData} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="name" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 11 }} /><Tooltip /><Legend />
+              <XAxis dataKey="name" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 11 }} /><Tooltip /><Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
               <Bar dataKey="open" fill="#3b82f6" name="Open" radius={[4,4,0,0]} />
               <Bar dataKey="breaches" fill="#ef4444" name="Breaches" radius={[4,4,0,0]} />
             </BarChart>
@@ -271,10 +346,12 @@ function PMDashboard() {
         <Card title="Module Heat Map (30d)">
           <div className="p-4"><ResponsiveContainer width="100%" height={200}>
             <PieChart>
-              <Pie data={moduleData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
+              <Pie data={moduleData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
                 {moduleData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-              </Pie><Tooltip />
-            </PieChart>
+              </Pie>
+                <Tooltip />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
+              </PieChart>
           </ResponsiveContainer></div>
         </Card>
         <Card title="Agent Workload">
@@ -374,10 +451,12 @@ function CustomerDashboard() {
         <Card title="By SAP Module">
           <div className="p-4"><ResponsiveContainer width="100%" height={200}>
             <PieChart>
-              <Pie data={moduleData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
+              <Pie data={moduleData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
                 {moduleData.map((_:any, i:number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-              </Pie><Tooltip />
-            </PieChart>
+              </Pie>
+                <Tooltip />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
+              </PieChart>
           </ResponsiveContainer></div>
         </Card>
         <Card title="Monthly Trend">
@@ -459,10 +538,12 @@ function AgentDashboard() {
         <Card title="Status Breakdown">
           <div className="p-4"><ResponsiveContainer width="100%" height={200}>
             <PieChart>
-              <Pie data={byStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
+              <Pie data={byStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
                 {byStatus.map((_:any, i:number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-              </Pie><Tooltip />
-            </PieChart>
+              </Pie>
+                <Tooltip />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
+              </PieChart>
           </ResponsiveContainer></div>
         </Card>
         <Card title={`🔴 Urgent Tickets (${(d?.urgent || []).length})`}>
@@ -536,18 +617,20 @@ function UserDashboard() {
         <Card title="Status Breakdown">
           <div className="p-4"><ResponsiveContainer width="100%" height={200}>
             <PieChart>
-              <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
+              <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
                 {statusData.map((_:any, i:number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-              </Pie><Tooltip />
-            </PieChart>
+              </Pie>
+                <Tooltip />
+                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
+              </PieChart>
           </ResponsiveContainer></div>
         </Card>
         <Card title="By Record Type">
           <div className="p-4"><ResponsiveContainer width="100%" height={200}>
             <PieChart>
-              <Pie data={byType} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80}>
+              <Pie data={byType} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={renderCustomizedLabel}>
                 {byType.map((_:any, i:number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-              </Pie><Tooltip /><Legend />
+              </Pie><Tooltip /><Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
             </PieChart>
           </ResponsiveContainer></div>
         </Card>

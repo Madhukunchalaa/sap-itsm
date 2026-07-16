@@ -9,13 +9,13 @@ export async function resolveAgent(userId: string) {
 
 /**
  * Resolve the list of customer IDs a Project Manager manages.
- * Each Customer has a projectManagerAgentId field — the PM assigned to that company.
- * PM sees all customers where Customer.projectManagerAgentId = their agent ID.
+ * Each Customer can have multiple Project Managers assigned via CustomerProjectManager.
+ * PM sees all customers where their agent ID is in the CustomerProjectManager table.
  */
 export async function resolveManagedCustomerIds(agentId: string, tenantId: string): Promise<string[]> {
-  const customers = await prisma.customer.findMany({
-    where: { projectManagerAgentId: agentId, tenantId },
-    select: { id: true },
+  const pmRecords = await prisma.customerProjectManager.findMany({
+    where: { agentId, customer: { tenantId } },
+    select: { customerId: true },
   });
-  return customers.map(c => c.id);
+  return pmRecords.map(pm => pm.customerId);
 }

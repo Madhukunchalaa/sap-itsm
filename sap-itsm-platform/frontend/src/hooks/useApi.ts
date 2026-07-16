@@ -4,10 +4,10 @@ import toast from 'react-hot-toast';
 import { getErrorMessage } from '../api/client';
 
 // ── Dashboard ─────────────────────────────────────────────────
-export function useDashboard() {
+export function useDashboard(plant?: string) {
   return useQuery({
-    queryKey: ['dashboard'],
-    queryFn: () => dashboardApi.overview().then((r) => r.data.dashboard),
+    queryKey: ['dashboard', plant],
+    queryFn: () => dashboardApi.overview(plant).then((r) => r.data.dashboard),
     refetchInterval: 30 * 1000,    // Poll every 30s
     refetchOnMount: 'always',      // Always fetch fresh when component mounts
     refetchOnWindowFocus: true,    // Fetch when tab regains focus

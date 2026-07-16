@@ -1,347 +1,392 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import Anthropic from '@anthropic-ai/sdk';
-import { createRecord, getRecord, listRecords, addComment } from './record.service';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { listRecords, getRecord } from './record.service';
 import { AppError } from '../utils/AppError';
 import { prisma } from '../config/database';
 import { getKnowledge } from './knowledge.service';
 import { logger } from '../config/logger';
 
-export async function processChatMessage(
-  tenantId: string,
-  userId: string,
-  message: string,
-  history: any[] = []
-) {
+// ---------------------------------------------------------------------------
+// SAP ITSM AI Assistant — READ-ONLY chatbot + AI triage.
+//
+// Provider is selectable via AI_PROVIDER:
+//   'gemini' (default) — free tier, uses GEMINI_API_KEY
+//   'claude'           — best quality, uses ANTHROPIC_API_KEY (paid)
+// The tools, prompts, and behavior are identical across providers; only the
+// LLM call differs. Nothing here ever writes to a ticket.
+// ---------------------------------------------------------------------------
+const AI_PROVIDER = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
+const CLAUDE_MODEL = 'claude-opus-4-8';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const MAX_TOOL_ROUNDS = 4;
+
+const STATUS_ENUM = [
+  'NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'AWAITING_CUSTOMER',
+  'WITH_SAP', 'REOPEN', 'RESOLVED', 'CLOSED', 'CANCELLED',
+];
+const PRIORITY_ENUM = ['P1', 'P2', 'P3', 'P4'];
+const TYPE_ENUM = ['INCIDENT', 'REQUEST', 'PROBLEM', 'CHANGE'];
+
+// ---- Read-only tool definitions (JSON-schema; works for both providers) ----
+const TOOL_DEFS = [
+  {
+    name: 'list_tickets',
+    description:
+      'Search and list ITSM tickets with optional filters. Returns the total ' +
+      'match count plus a page of summaries. Use this for "how many…", "show me…", ' +
+      'or "list…" questions. All filters are optional and combine with AND.',
+    parameters: {
+      type: 'object',
+      properties: {
+        status: { type: 'array', items: { type: 'string', enum: STATUS_ENUM }, description: 'Filter by one or more statuses' },
+        priority: { type: 'array', items: { type: 'string', enum: PRIORITY_ENUM }, description: 'Filter by one or more priorities' },
+        recordType: { type: 'array', items: { type: 'string', enum: TYPE_ENUM }, description: 'Filter by one or more record types' },
+        plant: { type: 'string', description: 'Exact plant name, e.g. "2121 - Anpara"' },
+        search: { type: 'string', description: 'Free-text search over title, description, record number, and SAP module' },
+        mine: { type: 'boolean', description: 'If true, only tickets created by the current user' },
+        limit: { type: 'number', description: 'Max summaries to return (1-25, default 10). The total count is always exact.' },
+      },
+    },
+  },
+  {
+    name: 'get_ticket',
+    description: 'Get the full detail of a single ticket by its record number (e.g. "INC-2024-0001") or UUID, including comments.',
+    parameters: {
+      type: 'object',
+      properties: { ticket: { type: 'string', description: 'Record number or UUID of the ticket' } },
+      required: ['ticket'],
+    },
+  },
+  {
+    name: 'list_agents',
+    description: 'List support agents with their level, specialization, and availability status.',
+    parameters: {
+      type: 'object',
+      properties: { level: { type: 'string', enum: ['L1', 'L2', 'L3', 'SPECIALIST'], description: 'Optional: filter by agent level' } },
+    },
+  },
+];
+
+// ---- Tool executors (all read-only) ---------------------------------------
+function summarizeTicket(r: any) {
+  return {
+    ticket: r.recordNumber,
+    type: r.recordType,
+    priority: r.priority,
+    status: r.status,
+    title: r.title,
+    plant: r.plant || null,
+    module: r.sapModule?.name || null,
+    agent: r.assignedAgent?.user
+      ? `${r.assignedAgent.user.firstName} ${r.assignedAgent.user.lastName || ''}`.trim()
+      : null,
+    customer: r.customer?.companyName || null,
+    createdAt: r.createdAt,
+  };
+}
+
+async function runTool(name: string, input: any, ctx: { tenantId: string; userId: string }) {
+  input = input || {};
+  switch (name) {
+    case 'list_tickets': {
+      const res = await listRecords({
+        tenantId: ctx.tenantId,
+        page: 1,
+        limit: Math.min(Math.max(input.limit || 10, 1), 25),
+        ...(input.status?.length && { statusIn: input.status }),
+        ...(input.priority?.length && { priorityIn: input.priority }),
+        ...(input.recordType?.length && { recordTypeIn: input.recordType }),
+        ...(input.plant && { plant: input.plant }),
+        ...(input.search && { search: input.search }),
+        ...(input.mine && { createdById: ctx.userId }),
+      } as any);
+      return { total: res.pagination.total, showing: res.data.length, tickets: (res.data as any[]).map(summarizeTicket) };
+    }
+    case 'get_ticket': {
+      let id: string = String(input.ticket || '').trim();
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      if (!isUuid) {
+        const found = await listRecords({ tenantId: ctx.tenantId, page: 1, limit: 1, search: id } as any);
+        if (!found.data.length) return { error: `No ticket found matching "${input.ticket}".` };
+        id = (found.data[0] as any).id;
+      }
+      const rec = await getRecord(id, ctx.tenantId);
+      return rec || { error: 'Ticket not found.' };
+    }
+    case 'list_agents': {
+      const agents = await prisma.agent.findMany({
+        where: { user: { tenantId: ctx.tenantId }, ...(input.level && { level: input.level }) },
+        include: { user: { select: { firstName: true, lastName: true } } },
+      });
+      return agents.map((a) => ({
+        name: `${a.user.firstName} ${a.user.lastName || ''}`.trim(),
+        level: a.level,
+        specialization: a.specialization,
+        status: a.status,
+      }));
+    }
+    default:
+      return { error: `Unknown tool: ${name}` };
+  }
+}
+
+// ---- Shared context (system prompt with live knowledge snapshot) ----------
+async function buildSystemPrompt(tenantId: string, userName: string) {
+  const knowledge = await getKnowledge(tenantId);
+  const knowledgeContext = knowledge
+    ? `
+CURRENT SYSTEM SNAPSHOT (as of ${new Date(knowledge.updatedAt).toLocaleString()}):
+- Active SAP Modules: ${knowledge.sapModules.map((m: any) => `${m.name} (${m.code})`).join(', ')}
+- Support Agents: ${knowledge.agents.map((a: any) => `${a.name} (${a.level}, ${a.status})`).join(', ')}
+- Top Customers: ${knowledge.customers.join(', ')}
+- Recent Ticket Stats: ${knowledge.recentStats.map((s: any) => `${s.recordType} ${s.status}: ${s._count}`).join(', ')}`
+    : '';
+
+  return `You are the SAP ITSM AI Assistant, a friendly and knowledgeable L1/L2 support expert.
+You are talking to ${userName}.
+
+WHAT YOU CAN DO:
+- Answer questions about tickets by calling the read-only tools (list_tickets, get_ticket, list_agents).
+- ANALYZE tickets and PROPOSE SOLUTIONS. This is your core job: when asked for a solution, fix, or analysis of a ticket, call get_ticket first, then give (1) the likely root cause, (2) concrete step-by-step resolution an SAP L2 engineer could follow, and (3) relevant SAP T-codes. Never refuse to suggest a solution — suggesting is always allowed.
+- Help with general SAP and ITSM "how do I…" questions: T-codes, root causes, troubleshooting steps.
+
+RULES:
+- You cannot MODIFY anything in the system — no creating, editing, commenting, assigning, or closing tickets. If asked to perform a change, explain the user must do it in the app (e.g. via Edit or + New Ticket). This restriction applies ONLY to changing data. Giving advice, analysis, and solution proposals is always in scope and encouraged.
+- Always use a tool to get live data — never guess ticket counts, statuses, or details. For "how many" questions, call list_tickets with the right filters and report the exact total.
+- Keep answers short and readable: use bold, bullet points, and spacing. No walls of text.
+- When the user describes an error or SAP issue, proactively offer 1-2 troubleshooting ideas or relevant T-codes.
+- If you need a filter the user didn't give (e.g. which plant), ask a brief clarifying question.
+${knowledgeContext}`;
+}
+
+// ===========================================================================
+// CLAUDE chat loop
+// ===========================================================================
+async function runClaudeChat(systemPrompt: string, priorMessages: Anthropic.MessageParam[], ctx: { tenantId: string; userId: string }) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey || apiKey === 'YOUR_CLAUDE_API_KEY_HERE') {
+    throw new AppError('Anthropic API key is not configured. Set ANTHROPIC_API_KEY or switch AI_PROVIDER=gemini.', 500);
+  }
+  const anthropic = new Anthropic({ apiKey });
+  const tools: Anthropic.Tool[] = TOOL_DEFS.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters as any }));
+  const messages = [...priorMessages];
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const response = await anthropic.messages.create({
+      model: CLAUDE_MODEL, max_tokens: 1500, system: systemPrompt, tools, messages,
+    });
+    if (response.stop_reason === 'tool_use') {
+      messages.push({ role: 'assistant', content: response.content });
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      for (const block of response.content) {
+        if (block.type === 'tool_use') {
+          let result: any;
+          try { result = await runTool(block.name, block.input, ctx); }
+          catch (err: any) { result = { error: err.message || 'Tool execution failed' }; }
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) });
+        }
+      }
+      messages.push({ role: 'user', content: toolResults });
+      continue;
+    }
+    return response.content.filter((b) => b.type === 'text').map((b: any) => b.text).join('\n').trim();
+  }
+  return '';
+}
+
+// ===========================================================================
+// GEMINI chat loop
+// ===========================================================================
+function toGeminiHistory(history: any[]) {
+  const raw = history
+    .map((h) => ({
+      role: h.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: typeof h.content === 'string' ? h.content : Array.isArray(h.content) ? h.content.map((c: any) => c.text || '').join('') : String(h.content ?? '') }],
+    }))
+    .filter((h) => h.parts[0].text.trim() !== '');
+  const out: any[] = [];
+  for (const m of raw) {
+    if (out.length === 0) { if (m.role === 'user') out.push(m); }
+    else if (out[out.length - 1].role === m.role) out[out.length - 1].parts[0].text += '\n' + m.parts[0].text;
+    else out.push(m);
+  }
+  return out;
+}
+
+async function runGeminiChat(systemPrompt: string, history: any[], message: string, ctx: { tenantId: string; userId: string }) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
-    throw new AppError('Gemini API Key is not configured. Please add it to your .env file.', 500);
+    throw new AppError('Gemini API key is not configured. Add GEMINI_API_KEY to your .env file.', 500);
   }
-  
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
-    model: 'gemini-flash-latest',
-    tools: [
-      {
-        functionDeclarations: [
-          {
-            name: 'create_ticket',
-            description: 'Create a new ITSM ticket (Incident, Problem, or Change Request).',
-            parameters: {
-              type: "object",
-              properties: {
-                title: { type: "string", description: 'Short summary of the issue' },
-                description: { type: "string", description: 'Detailed description' },
-                recordType: { type: "string", enum: ['INCIDENT', 'PROBLEM', 'CHANGE_REQUEST'], description: 'Type of ticket' } as any,
-                priority: { type: "string", enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], description: 'Urgency of the issue' } as any,
-              },
-              required: ['title', 'description', 'recordType', 'priority'],
-            } as any,
-          },
-          {
-            name: 'get_ticket_status',
-            description: 'Retrieve the current status and details of a specific ticket by its ID or ticket number.',
-            parameters: {
-              type: "object",
-              properties: {
-                ticketId: { type: "string", description: 'The UUID or Record Number (e.g., INC-2024-001) of the ticket' },
-              },
-              required: ['ticketId'],
-            } as any,
-          },
-          {
-            name: 'list_my_tickets',
-            description: 'List all tickets created by the current user.',
-            parameters: {
-              type: "object",
-              properties: {
-                limit: { type: "number", description: 'Maximum number of tickets to return (default 5)' },
-              },
-            } as any,
-          },
-          {
-            name: 'add_comment',
-            description: 'Add a comment to an existing ticket.',
-            parameters: {
-              type: "object",
-              properties: {
-                ticketId: { type: "string", description: 'The UUID of the ticket' },
-                text: { type: "string", description: 'The comment text' },
-              },
-              required: ['ticketId', 'text'],
-            } as any,
-          },
-          {
-            name: 'list_agents',
-            description: 'List all available support agents and their specializations.',
-            parameters: {
-              type: "object",
-              properties: {
-                level: { type: "string", enum: ['L1', 'L2', 'L3', 'SPECIALIST'], description: 'Filter by agent level' } as any,
-              },
-            } as any,
-          },
-        ],
-      },
-    ],
+    model: GEMINI_MODEL,
+    tools: [{ functionDeclarations: TOOL_DEFS as any }],
+    systemInstruction: { role: 'system', parts: [{ text: systemPrompt }] } as any,
   });
 
-  const userRecord = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { firstName: true, lastName: true }
-  });
-  const userName = userRecord ? `${userRecord.firstName} ${userRecord.lastName || ''}`.trim() : 'User';
+  const chat = model.startChat({ history: toGeminiHistory(history) });
+  let result = await chat.sendMessage(message);
 
-  const knowledge = await getKnowledge(tenantId);
-  const knowledgeContext = knowledge ? `
-CURRENT SYSTEM KNOWLEDGE (Snapshot from ${new Date(knowledge.updatedAt).toLocaleString()}):
-- Active SAP Modules: ${knowledge.sapModules.map((m: any) => `${m.name} (${m.code})`).join(', ')}
-- Available Support Agents: ${knowledge.agents.map((a: any) => `${a.name} (${a.level}, ${a.status})`).join(', ')}
-- Top Customers: ${knowledge.customers.join(', ')}
-- CMDB Status: ${knowledge.activeCMDB.map((c: any) => `${c.ciType}: ${c._count}`).join(', ')}
-- Recent Ticket Stats (30d): ${knowledge.recentStats.map((s: any) => `${s.recordType} ${s.status}: ${s._count}`).join(', ')}
-` : '';
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const calls = result.response.functionCalls();
+    if (!calls || calls.length === 0) break;
+    const responses: any[] = [];
+    for (const call of calls) {
+      let out: any;
+      try { out = await runTool(call.name, call.args as any, ctx); }
+      catch (err: any) { out = { error: err.message || 'Tool execution failed' }; }
+      responses.push({ functionResponse: { name: call.name, response: Array.isArray(out) ? { data: out } : out } });
+    }
+    result = await chat.sendMessage(responses);
+  }
 
-  const systemInstruction = `You are the SAP ITSM AI Assistant. Your goal is to help users manage their IT service tickets efficiently.
+  try { return result.response.text(); }
+  catch { return 'I processed that, but had trouble writing a reply — could you rephrase?'; }
+}
 
-You are currently talking to: ${userName}.
-
-Important Guidelines:
-1. Greet the user warmly by their name ("${userName}") at the start of the conversation or when appropriate.
-2. Be very friendly, empathetic, and conversational in your tone. 
-3. Provide short, easily readable responses. Never use massive walls of text. Use bullet points, bold text, and proper spacing.
-4. If the user describes a problem, error, or SAP issue, proactively offer 1 or 2 troubleshooting ideas, potential root causes, or relevant SAP Transaction Codes (T-codes) to help them solve it. Act as a helpful L1/L2 support expert.
-5. You can create tickets, check status, list tickets, and add comments.
-6. When a user describes a problem, identify if it should be an INCIDENT or CHANGE_REQUEST.
-7. If you need more information to perform an action (like priority or description), ask the user clearly.
-
-${knowledgeContext}
-
-Current User ID: ${userId}
-Current Tenant ID: ${tenantId}`;
+// ---- Main chat entry point -------------------------------------------------
+export async function processChatMessage(tenantId: string, userId: string, message: string, history: any[] = []) {
+  const userRecord = await prisma.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true } });
+  const userName = userRecord ? `${userRecord.firstName} ${userRecord.lastName || ''}`.trim() : 'there';
+  const systemPrompt = await buildSystemPrompt(tenantId, userName);
 
   try {
-    // Map history to Gemini format and ensure strictly alternating roles
-    const rawHistory = history.map(h => {
-      let textContent = '';
-      if (typeof h.content === 'string') {
-        textContent = h.content;
-      } else if (Array.isArray(h.content) && h.content[0]?.text) {
-        textContent = h.content[0].text;
-      } else {
-        textContent = JSON.stringify(h.content);
-      }
-      return {
-        role: h.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: textContent || ' ' }], // prevent empty parts
-      };
-    }).filter(h => h.parts[0].text !== '');
-
-    const geminiHistory = [];
-    for (const msg of rawHistory) {
-      if (geminiHistory.length === 0) {
-        if (msg.role === 'user') geminiHistory.push(msg);
-      } else {
-        const lastMsg = geminiHistory[geminiHistory.length - 1];
-        if (lastMsg.role === msg.role) {
-          // Merge consecutive messages from the same role
-          lastMsg.parts[0].text += '\n' + msg.parts[0].text;
-        } else {
-          geminiHistory.push(msg);
-        }
-      }
+    let finalText: string;
+    if (AI_PROVIDER === 'claude') {
+      const priorMessages: Anthropic.MessageParam[] = history
+        .map((h) => ({
+          role: h.role === 'assistant' ? 'assistant' : 'user',
+          content: typeof h.content === 'string' ? h.content : Array.isArray(h.content) ? h.content.map((c: any) => c.text || '').join('') : String(h.content ?? ''),
+        } as Anthropic.MessageParam))
+        .filter((m) => typeof m.content === 'string' && (m.content as string).trim() !== '');
+      priorMessages.push({ role: 'user', content: message });
+      finalText = await runClaudeChat(systemPrompt, priorMessages, { tenantId, userId });
+    } else {
+      finalText = await runGeminiChat(systemPrompt, history, message, { tenantId, userId });
     }
 
-    const chat = model.startChat({
-      history: geminiHistory,
-      systemInstruction: {
-        parts: [{ text: systemInstruction }],
-      } as any,
-    });
-
-    const result = await chat.sendMessage(message);
-    const response = result.response;
-    const call = response.functionCalls()?.[0];
-
-    if (call) {
-      let toolResult;
-      try {
-        switch (call.name) {
-          case 'create_ticket':
-            toolResult = await createRecord({
-              ...(call.args as any),
-              tenantId,
-              createdById: userId,
-            });
-            break;
-          case 'get_ticket_status':
-            toolResult = await getRecord((call.args as any).ticketId, tenantId);
-            break;
-          case 'list_my_tickets':
-            toolResult = await listRecords({
-              tenantId,
-              createdById: userId,
-              page: 1,
-              limit: (call.args as any).limit || 5,
-            });
-            break;
-          case 'add_comment':
-            toolResult = await addComment(
-              (call.args as any).ticketId,
-              tenantId,
-              userId,
-              (call.args as any).text,
-              false
-            );
-            break;
-          case 'list_agents':
-            const agents = await prisma.agent.findMany({
-              where: {
-                user: { tenantId },
-                ...(call.args as any).level && { level: (call.args as any).level },
-              },
-              include: {
-                user: { select: { firstName: true, lastName: true } },
-              },
-            });
-            toolResult = agents.map(a => ({
-              name: `${a.user.firstName} ${a.user.lastName}`,
-              level: a.level,
-              specialization: a.specialization,
-              status: a.status,
-            }));
-            break;
-          default:
-            toolResult = { error: 'Unknown tool' };
-        }
-      } catch (err: any) {
-        toolResult = { error: err.message || 'Error executing tool' };
-      }
-
-      // Send tool result back
-      const finalResult = await chat.sendMessage([
-        {
-          functionResponse: {
-            name: call.name,
-            response: Array.isArray(toolResult) ? { data: toolResult } : toolResult,
-          },
-        },
-      ]);
-      
-      let text = '';
-      try {
-        text = finalResult.response.text();
-      } catch (e) {
-        // Fallback if text() fails (e.g., if it's another tool call or blocked)
-        const candidate = finalResult.response.candidates?.[0];
-        text = candidate?.content?.parts?.find(p => p.text)?.text || 'I have processed that for you. Is there anything else?';
-      }
-
-      return {
-        message: text,
-        history: [
-          ...history,
-          { role: 'user', content: message },
-          { role: 'assistant', content: [{ type: 'text', text }] },
-        ],
-      };
-    }
-
-    let text = '';
-    try {
-      text = response.text();
-    } catch (e) {
-      const candidate = response.candidates?.[0];
-      text = candidate?.content?.parts?.find(p => p.text)?.text || 'I encountered an issue generating a response. How else can I help?';
-    }
+    if (!finalText) finalText = "I looked into that but couldn't put together a clear answer — could you rephrase?";
 
     return {
-      message: text,
+      message: finalText,
       history: [
         ...history,
         { role: 'user', content: message },
-        { role: 'assistant', content: [{ type: 'text', text }] },
+        { role: 'assistant', content: [{ type: 'text', text: finalText }] },
       ],
     };
   } catch (error: any) {
-    // FALLBACK: If Gemini hits quota (429), try Claude if API key exists
-    const isQuotaError = error.status === 429 || error.message?.includes('429') || error.message?.includes('quota');
-    const claudeKey = process.env.ANTHROPIC_API_KEY;
-
-    if (isQuotaError && claudeKey && claudeKey !== 'YOUR_CLAUDE_API_KEY_HERE') {
-      logger.warn('⚠️ Gemini quota exceeded. Falling back to Anthropic Claude...', { tenantId });
-      try {
-        return await processClaudeMessage(tenantId, userId, message, history);
-      } catch (claudeError: any) {
-        logger.error('❌ Claude fallback also failed:', claudeError);
-      }
-    }
-
-    logger.error('Gemini API Error Details:', {
-      message: error.message,
-      status: error.status,
-      stack: error.stack,
-      details: error.errorDetails
-    });
+    logger.error('AI chat error:', { provider: AI_PROVIDER, message: error.message, status: error.status });
     throw new AppError(`AI Service Error: ${error.message || 'Unknown error'}`, 500);
   }
 }
 
-async function processClaudeMessage(
-  tenantId: string,
-  userId: string,
-  message: string,
-  history: any[] = []
-) {
-  const anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
+// ===========================================================================
+// AI TRIAGE — analyze one ticket, propose diagnosis + solution + best agent.
+// Suggestion only; never writes. Works with either provider.
+// ===========================================================================
+export interface TriageResult {
+  rootCause: string;
+  suggestedSolution: string;
+  sapTcodes: string[];
+  recommendedAgent: { name: string; reason: string } | null;
+  suggestedPriority: string;
+  confidence: string;
+}
+
+function parseTriage(raw: string, fallbackPriority: string): TriageResult {
+  const cleaned = raw.replace(/```json|```/g, '').trim();
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  try {
+    const p = JSON.parse(start >= 0 ? cleaned.slice(start, end + 1) : cleaned);
+    return {
+      rootCause: p.rootCause || '',
+      suggestedSolution: p.suggestedSolution || '',
+      sapTcodes: Array.isArray(p.sapTcodes) ? p.sapTcodes : [],
+      recommendedAgent: p.recommendedAgent?.name ? p.recommendedAgent : null,
+      suggestedPriority: p.suggestedPriority || fallbackPriority,
+      confidence: p.confidence || 'medium',
+    };
+  } catch {
+    return { rootCause: '', suggestedSolution: raw, sapTcodes: [], recommendedAgent: null, suggestedPriority: fallbackPriority, confidence: 'low' };
+  }
+}
+
+export async function generateTriage(tenantId: string, recordId: string): Promise<TriageResult> {
+  const record: any = await getRecord(recordId, tenantId);
+  if (!record) throw new AppError('Ticket not found.', 404);
+
+  const agents = await prisma.agent.findMany({
+    where: { user: { tenantId } },
+    include: { user: { select: { firstName: true, lastName: true } } },
   });
-
-  const userRecord = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { firstName: true, lastName: true }
-  });
-  const userName = userRecord ? `${userRecord.firstName} ${userRecord.lastName || ''}`.trim() : 'User';
-
-  const knowledge = await getKnowledge(tenantId);
-  const knowledgeContext = knowledge ? `
-CURRENT SYSTEM KNOWLEDGE (Snapshot from ${new Date(knowledge.updatedAt).toLocaleString()}):
-- Active SAP Modules: ${knowledge.sapModules.map((m: any) => `${m.name} (${m.code})`).join(', ')}
-- Available Support Agents: ${knowledge.agents.map((a: any) => `${a.name} (${a.level}, ${a.status})`).join(', ')}
-- Top Customers: ${knowledge.customers.join(', ')}
-- Recent Ticket Stats: ${knowledge.recentStats.map((s: any) => `${s.recordType} ${s.status}: ${s._count}`).join(', ')}
-` : '';
-
-  const systemInstruction = `You are the SAP ITSM AI Assistant. Help users manage IT tickets.
-Greet the user as "${userName}". Be friendly and concise.
-Proactively offer SAP troubleshooting (T-codes, root causes).
-
-${knowledgeContext}
-
-User ID: ${userId} | Tenant ID: ${tenantId}`;
-
-  // Map history to Claude format
-  const claudeMessages: any[] = history.map(h => ({
-    role: h.role === 'assistant' ? 'assistant' : 'user',
-    content: typeof h.content === 'string' ? h.content : (h.content[0]?.text || JSON.stringify(h.content))
+  const agentList = agents.map((a) => ({
+    name: `${a.user.firstName} ${a.user.lastName || ''}`.trim(),
+    level: a.level, specialization: a.specialization, status: a.status,
   }));
 
-  claudeMessages.push({ role: 'user', content: message });
+  const similar = await listRecords({
+    tenantId, page: 1, limit: 5,
+    ...(record.sapModuleId && { sapModuleId: record.sapModuleId }),
+    statusIn: ['RESOLVED', 'CLOSED'],
+  } as any);
+  const precedents = (similar.data as any[]).filter((r) => r.id !== record.id).map((r) => ({ ticket: r.recordNumber, title: r.title }));
 
-  const response = await anthropic.messages.create({
-    model: 'claude-3-haiku-20240307',
-    max_tokens: 1024,
-    system: systemInstruction,
-    messages: claudeMessages,
+  const prompt = `Analyze this SAP ITSM ticket and produce a triage recommendation.
+
+TICKET
+- Number: ${record.recordNumber}
+- Type: ${record.recordType} | Priority: ${record.priority} | Status: ${record.status}
+- Plant: ${record.plant || 'N/A'}
+- SAP Module: ${record.sapModule?.name || 'N/A'}${record.sapSubModule?.name ? ' / ' + record.sapSubModule.name : ''}
+- Title: ${record.title}
+- Description: ${record.description || '(none)'}
+
+AVAILABLE AGENTS (pick the single best match for module + level + availability):
+${agentList.map((a) => `- ${a.name} — ${a.level}, ${a.specialization || 'general'}, ${a.status}`).join('\n') || '- (no agents registered)'}
+
+RESOLVED PRECEDENTS in this module (for pattern reference):
+${precedents.map((p) => `- ${p.ticket}: ${p.title}`).join('\n') || '- (none)'}
+
+Respond with ONLY a JSON object (no prose, no markdown fences) with exactly these keys:
+{
+  "rootCause": "1-2 sentences on the most likely root cause",
+  "suggestedSolution": "concrete resolution steps an L2 engineer can follow, as short markdown",
+  "sapTcodes": ["relevant SAP transaction codes, e.g. ME23N"],
+  "recommendedAgent": { "name": "exact name from the agent list", "reason": "why this agent" },
+  "suggestedPriority": "P1 | P2 | P3 | P4",
+  "confidence": "low | medium | high"
+}
+If no agent fits, set "recommendedAgent" to null.`;
+
+  const systemInstruction = 'You are a senior SAP ITSM triage expert. You output only valid JSON matching the requested schema.';
+
+  if (AI_PROVIDER === 'claude') {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey || apiKey === 'YOUR_CLAUDE_API_KEY_HERE') {
+      throw new AppError('Anthropic API key is not configured. Set ANTHROPIC_API_KEY or switch AI_PROVIDER=gemini.', 500);
+    }
+    const anthropic = new Anthropic({ apiKey });
+    const response = await anthropic.messages.create({
+      model: CLAUDE_MODEL, max_tokens: 1500, system: systemInstruction, messages: [{ role: 'user', content: prompt }],
+    });
+    const raw = (response.content.find((b: any) => b.type === 'text') as any)?.text || '{}';
+    return parseTriage(raw, record.priority);
+  }
+
+  // Gemini (default, free)
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
+    throw new AppError('Gemini API key is not configured. Add GEMINI_API_KEY to your .env file.', 500);
+  }
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: GEMINI_MODEL,
+    systemInstruction: { role: 'system', parts: [{ text: systemInstruction }] } as any,
+    generationConfig: { responseMimeType: 'application/json' } as any,
   });
-
-  const text = (response.content[0] as any).text;
-
-  return {
-    message: text,
-    history: [
-      ...history,
-      { role: 'user', content: message },
-      { role: 'assistant', content: [{ type: 'text', text }] },
-    ],
-  };
+  const result = await model.generateContent(prompt);
+  return parseTriage(result.response.text(), record.priority);
 }

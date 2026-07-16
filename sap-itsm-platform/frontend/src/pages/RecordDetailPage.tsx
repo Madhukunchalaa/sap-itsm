@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MessageSquare, Timer, Paperclip, Save, X, Send, Lock, Edit2, History, Trash2, Upload, Download, XCircle } from 'lucide-react';
+import { ArrowLeft, MessageSquare, Timer, Paperclip, Save, X, Send, Lock, Edit2, History, Trash2, Upload, Download, XCircle, Sparkles, Loader2, Bot } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { useQueryClient } from '@tanstack/react-query';
 import { useRecord, useUpdateRecord, useAddComment, useAddTimeEntry, useAgents, useDeleteRecord, useCloseRecord } from '../hooks/useApi';
 import { auditApi, recordsApi } from '../api/services';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
@@ -8,7 +10,7 @@ import { PriorityBadge, StatusBadge, TypeBadge } from '../components/ui/Badges';
 import { Button, Card, Textarea } from '../components/ui/Forms';
 import { Modal } from '../components/ui/Modal';
 import { useAuthStore } from '../store/auth.store';
-import { formatDistanceToNow, format } from 'date-fns';
+import { formatDistanceToNow, format, formatDistance } from 'date-fns';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 
@@ -70,6 +72,39 @@ export default function RecordDetailPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMentionPicker, setShowMentionPicker] = useState(false);
   const [mentionFilter, setMentionFilter] = useState('');
+  const [triage, setTriage] = useState<any>(null);
+  const [triageLoading, setTriageLoading] = useState(false);
+  const queryClient = useQueryClient();
+  const [editingCommentId, setEditingCommentId] = useState<string|null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
+  const [deletingCommentId, setDeletingCommentId] = useState<string|null>(null);
+  const [commentBusy, setCommentBusy] = useState(false);
+
+  const saveCommentEdit = async (commentId: string) => {
+    const plain = editingCommentText.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+    if (!plain) { toast.error('Comment cannot be empty'); return; }
+    setCommentBusy(true);
+    try {
+      await recordsApi.updateComment(id!, commentId, editingCommentText);
+      await queryClient.invalidateQueries({ queryKey: ['record', id] });
+      setEditingCommentId(null);
+      toast.success('Comment updated');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to update comment');
+    } finally { setCommentBusy(false); }
+  };
+
+  const confirmDeleteComment = async (commentId: string) => {
+    setCommentBusy(true);
+    try {
+      await recordsApi.deleteComment(id!, commentId);
+      await queryClient.invalidateQueries({ queryKey: ['record', id] });
+      setDeletingCommentId(null);
+      toast.success('Comment deleted');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to delete comment');
+    } finally { setCommentBusy(false); }
+  };
 
   const loadAttachments = async () => {
     if (attachmentsLoaded) return;
@@ -88,6 +123,25 @@ export default function RecordDetailPage() {
   const canEdit = ['SUPER_ADMIN','COMPANY_ADMIN','AGENT','PROJECT_MANAGER','USER'].includes(user?.role||'');
   const canAssign = ['SUPER_ADMIN','COMPANY_ADMIN','PROJECT_MANAGER'].includes(user?.role||'');
   const canSeeInternal = ['SUPER_ADMIN', 'AGENT'].includes(user?.role||'');
+
+  // AI Triage access: SUPER_ADMIN, or an email in VITE_AI_TRIAGE_EMAILS (mirror
+  // of the backend AI_TRIAGE_EMAILS allowlist). Backend enforces this too.
+  const triageEmails = ((import.meta as any).env?.VITE_AI_TRIAGE_EMAILS || '')
+    .toLowerCase().split(',').map((e: string) => e.trim()).filter(Boolean);
+  const canTriage = user?.role === 'SUPER_ADMIN' || triageEmails.includes((user?.email||'').toLowerCase());
+  const isUnassigned = !record.assignedAgent;
+
+  const runTriage = async () => {
+    setTriageLoading(true);
+    try {
+      const res = await recordsApi.aiTriage(record.id);
+      setTriage(res.data.triage);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'AI triage failed');
+    } finally {
+      setTriageLoading(false);
+    }
+  };
   const isAgent = ['SUPER_ADMIN','COMPANY_ADMIN','AGENT','PROJECT_MANAGER'].includes(user?.role||'');
   const canLogTime = ['SUPER_ADMIN','AGENT','PROJECT_MANAGER'].includes(user?.role||'');
   const isEndUser = user?.role === 'USER';
@@ -167,6 +221,13 @@ export default function RecordDetailPage() {
         </div>
         {!editMode && (
           <div className="flex gap-2">
+            {canTriage && isUnassigned && (
+              <button onClick={runTriage} disabled={triageLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:opacity-60">
+                {triageLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : <Sparkles className="w-4 h-4"/>}
+                {triageLoading ? 'Analyzing…' : 'Analyze with AI'}
+              </button>
+            )}
             {canClose && (
               <button onClick={() => setCloseModal(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
@@ -198,6 +259,65 @@ export default function RecordDetailPage() {
           </div>
         )}
       </div>
+
+      {/* ── AI Triage suggestion (suggestion only — no changes are applied) ── */}
+      {triage && (
+        <Card>
+          <div className="p-5 border-l-4 border-l-violet-500 space-y-4">
+            <div className="flex items-center gap-2">
+              <Bot className="w-5 h-5 text-violet-600"/>
+              <h3 className="text-sm font-semibold text-gray-800">AI Triage Suggestion</h3>
+              <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">
+                {triage.confidence} confidence
+              </span>
+              <span className="ml-auto text-[11px] text-gray-400">Suggestion only — nothing has been changed</span>
+            </div>
+
+            {triage.rootCause && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-1">Likely root cause</p>
+                <p className="text-sm text-gray-700">{triage.rootCause}</p>
+              </div>
+            )}
+
+            {triage.suggestedSolution && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-1">Suggested solution</p>
+                <p className="text-sm text-gray-700 whitespace-pre-wrap">{triage.suggestedSolution}</p>
+              </div>
+            )}
+
+            {Array.isArray(triage.sapTcodes) && triage.sapTcodes.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-1">Relevant T-codes</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {triage.sapTcodes.map((t: string) => (
+                    <span key={t} className="text-xs font-mono px-2 py-0.5 rounded bg-gray-100 text-gray-700">{t}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-6 pt-1">
+              {triage.recommendedAgent && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 mb-1">Recommended agent</p>
+                  <p className="text-sm text-gray-800 font-medium">{triage.recommendedAgent.name}</p>
+                  <p className="text-xs text-gray-500">{triage.recommendedAgent.reason}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-1">Suggested priority</p>
+                <p className="text-sm text-gray-800 font-medium">{triage.suggestedPriority}</p>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-gray-400 pt-1">
+              To apply any of this, use <span className="font-medium">Edit</span> to assign the agent or change priority yourself.
+            </p>
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left: Main Content */}
@@ -300,8 +420,13 @@ export default function RecordDetailPage() {
             {activeTab==='comments' && (
               <div className="p-4 space-y-4">
                 {(record.comments||[]).length===0 && <p className="text-sm text-center text-gray-400 py-6">No comments yet.</p>}
-                {(record.comments||[]).map((c:any) => (
-                  <div key={c.id} className="flex gap-3">
+                {(record.comments||[]).map((c:any) => {
+                  const isOwn = c.author?.id === user?.id;
+                  const canEditComment = isOwn;
+                  const canDeleteComment = isOwn || user?.role === 'SUPER_ADMIN';
+                  const isEdited = c.updatedAt && new Date(c.updatedAt).getTime() - new Date(c.createdAt).getTime() > 2000;
+                  return (
+                  <div key={c.id} className="flex gap-3 group">
                     <div className="w-8 h-8 rounded-full bg-slate-700 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
                       {c.author.firstName[0]}{c.author.lastName[0]}
                     </div>
@@ -313,14 +438,65 @@ export default function RecordDetailPage() {
                             <Lock className="w-3 h-3"/> Internal
                           </span>
                         )}
+                        {isEdited && <span className="text-[11px] text-gray-400 italic">(edited)</span>}
                         <span className="text-xs text-gray-400 ml-auto">{formatDistanceToNow(new Date(c.createdAt),{addSuffix:true})}</span>
+                        {editingCommentId !== c.id && deletingCommentId !== c.id && (canEditComment || canDeleteComment) && (
+                          <span className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {canEditComment && (
+                              <button title="Edit comment"
+                                onClick={() => { setEditingCommentId(c.id); setEditingCommentText(c.text); setDeletingCommentId(null); }}
+                                className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50">
+                                <Edit2 className="w-3.5 h-3.5"/>
+                              </button>
+                            )}
+                            {canDeleteComment && (
+                              <button title="Delete comment"
+                                onClick={() => { setDeletingCommentId(c.id); setEditingCommentId(null); }}
+                                className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50">
+                                <Trash2 className="w-3.5 h-3.5"/>
+                              </button>
+                            )}
+                          </span>
+                        )}
                       </div>
-                      <div className={`text-sm text-gray-700 bg-gray-50 rounded-xl px-4 py-3 ${c.internalFlag?'border border-amber-200':''} prose prose-sm max-w-none`}
-                        dangerouslySetInnerHTML={{ __html: c.text }}
-                      />
+
+                      {editingCommentId === c.id ? (
+                        <div className="space-y-2">
+                          <ReactQuill value={editingCommentText} onChange={setEditingCommentText} theme="snow"/>
+                          <div className="flex gap-2 justify-end">
+                            <button onClick={() => setEditingCommentId(null)} disabled={commentBusy}
+                              className="px-3 py-1 text-xs border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">
+                              Cancel
+                            </button>
+                            <button onClick={() => saveCommentEdit(c.id)} disabled={commentBusy}
+                              className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-60">
+                              {commentBusy ? 'Saving…' : 'Save'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className={`text-sm text-gray-700 bg-gray-50 rounded-xl px-4 py-3 ${c.internalFlag?'border border-amber-200':''} prose prose-sm max-w-none`}
+                          dangerouslySetInnerHTML={{ __html: c.text }}
+                        />
+                      )}
+
+                      {deletingCommentId === c.id && (
+                        <div className="mt-2 flex items-center gap-2 text-xs bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                          <span className="text-red-700">Delete this comment permanently?</span>
+                          <button onClick={() => confirmDeleteComment(c.id)} disabled={commentBusy}
+                            className="ml-auto px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-60">
+                            {commentBusy ? 'Deleting…' : 'Delete'}
+                          </button>
+                          <button onClick={() => setDeletingCommentId(null)} disabled={commentBusy}
+                            className="px-2.5 py-1 border border-gray-300 rounded text-gray-600 hover:bg-white">
+                            Cancel
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
                 <div className="border-t border-gray-100 pt-4">
                   <div className="relative">
                     <ReactQuill
@@ -417,6 +593,73 @@ export default function RecordDetailPage() {
                     if (!canSeeInternal && log.entityType === 'Comment' && log.newValues?.internalFlag) return false;
                     return true;
                   });
+
+                  // ── Metrics Calculation ─────────────────────────────
+                  const chronoLogs = [...changeLog].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+                  let totalStatusChanges = 0;
+                  let firstAssignTime: Date | null = null;
+                  const statusDurations: Record<string, number> = {};
+                  let currentStatus = 'NEW';
+                  let lastStatusChangeTime = new Date(record.createdAt).getTime();
+
+                  for (const log of chronoLogs) {
+                    if (log.action === 'ASSIGN' || (log.action === 'UPDATE' && log.newValues?.assignedAgentId && !log.oldValues?.assignedAgentId)) {
+                      if (!firstAssignTime) firstAssignTime = new Date(log.createdAt);
+                    }
+                    if (log.action === 'STATUS_CHANGE' || (log.action === 'UPDATE' && log.newValues?.status)) {
+                      const oldStatus = log.oldValues?.status || currentStatus;
+                      const newStatus = log.newValues?.status;
+                      if (newStatus && oldStatus !== newStatus) {
+                        totalStatusChanges++;
+                        const changeTime = new Date(log.createdAt).getTime();
+                        statusDurations[oldStatus] = (statusDurations[oldStatus] || 0) + (changeTime - lastStatusChangeTime);
+                        currentStatus = newStatus;
+                        lastStatusChangeTime = changeTime;
+                      }
+                    }
+                  }
+                  const endTime = record.resolvedAt ? new Date(record.resolvedAt).getTime() : Date.now();
+                  statusDurations[currentStatus] = (statusDurations[currentStatus] || 0) + (endTime - lastStatusChangeTime);
+
+                  const formatMs = (ms: number) => {
+                    const hours = ms / (1000 * 60 * 60);
+                    if (hours < 1) {
+                      const mins = Math.round(ms / (1000 * 60));
+                      return `${mins} min${mins !== 1 ? 's' : ''}`;
+                    }
+                    if (hours > 24) {
+                      const days = Math.floor(hours / 24);
+                      const remHours = Math.round(hours % 24);
+                      return `${days} day${days !== 1 ? 's' : ''} ${remHours} hr${remHours !== 1 ? 's' : ''}`;
+                    }
+                    return `${hours.toFixed(1)} hr${hours !== 1 ? 's' : ''}`;
+                  };
+
+                  let timeToResolveAfterAssign = 'N/A';
+                  if (firstAssignTime && record.resolvedAt) {
+                    timeToResolveAfterAssign = formatMs(new Date(record.resolvedAt).getTime() - firstAssignTime.getTime());
+                  } else if (firstAssignTime && !record.resolvedAt) {
+                    timeToResolveAfterAssign = `${formatMs(Date.now() - firstAssignTime.getTime())} (Active)`;
+                  }
+
+                  let totalCycleTime = 'N/A';
+                  const createdTime = new Date(record.createdAt).getTime();
+                  if (record.resolvedAt) {
+                    totalCycleTime = formatMs(new Date(record.resolvedAt).getTime() - createdTime);
+                  } else {
+                    totalCycleTime = `${formatMs(Date.now() - createdTime)} (Active)`;
+                  }
+
+                  let maxStatus = 'N/A';
+                  let maxDurationMs = 0;
+                  Object.entries(statusDurations).forEach(([status, ms]) => {
+                    if (ms > maxDurationMs) {
+                      maxDurationMs = ms;
+                      maxStatus = status;
+                    }
+                  });
+                  const maxStatusText = maxStatus !== 'N/A' ? `${maxStatus} (${formatMs(maxDurationMs)})` : 'N/A';
+
                   // Human-readable field name map (avoids showing raw UUIDs)
                   const FIELD_LABELS: Record<string,string> = {
                     assignedAgentId: 'Assigned Agent',
@@ -436,50 +679,81 @@ export default function RecordDetailPage() {
                     if (UUID_FIELDS.has(k)) return v ? '(set)' : '(cleared)';
                     return String(v);
                   };
-                  if (visibleLogs.length === 0) return <p className="text-sm text-center text-gray-400 py-6">No changes recorded yet.</p>;
-                  return visibleLogs.map((log:any) => {
-                    const actionColors: Record<string,string> = {
-                      STATUS_CHANGE: 'bg-blue-100 text-blue-700',
-                      ASSIGN: 'bg-purple-100 text-purple-700',
-                      UPDATE: 'bg-gray-100 text-gray-600',
-                      COMMENT: 'bg-amber-100 text-amber-700',
-                      CREATE: 'bg-green-100 text-green-700',
-                    };
-                    const colorClass = actionColors[log.action] || 'bg-gray-100 text-gray-600';
-                    const changedKeys = (log.oldValues && log.newValues)
-                      ? Object.keys(log.newValues).filter(k =>
-                          log.oldValues[k] !== undefined && log.oldValues[k] !== log.newValues[k]
-                        )
-                      : [];
-                    return (
-                      <div key={log.id} className="flex gap-3 text-sm border-b border-gray-50 pb-3 last:border-0">
-                        <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center flex-shrink-0 text-xs font-bold text-indigo-600">
-                          {log.user ? `${log.user.firstName?.[0]}${log.user.lastName?.[0]}` : '⚙'}
+
+                  return (
+                    <div className="space-y-5">
+                      {/* Premium Metrics Summary Dashboard */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 border border-slate-100 rounded-2xl p-4 shadow-sm">
+                        <div className="bg-white border border-gray-100 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Cycle Time</span>
+                          <span className="text-base font-bold text-emerald-700 mt-1.5">{totalCycleTime}</span>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium text-gray-900">{log.user ? `${log.user.firstName} ${log.user.lastName}` : 'System'}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded font-medium ${colorClass}`}>{log.action.replace('_',' ')}</span>
-                            <span className="text-xs text-gray-400 ml-auto">{format(new Date(log.createdAt), 'dd MMM yyyy HH:mm')}</span>
-                          </div>
-                          {changedKeys.length > 0 && (
-                            <div className="mt-1 text-xs text-gray-500 space-y-0.5">
-                              {changedKeys.map((k:string) => (
-                                <div key={k}>
-                                  <span className="font-medium text-gray-700">{FIELD_LABELS[k] || k}:</span>
-                                  {' '}<span className="line-through text-red-400">{fmtVal(k, log.oldValues[k])}</span>
-                                  {' → '}<span className="text-green-600">{fmtVal(k, log.newValues[k])}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {log.newValues?.text && (
-                            <p className="mt-1 text-xs text-gray-500 italic">"{String(log.newValues.text).slice(0,120)}{String(log.newValues.text).length>120?'…':''}"</p>
-                          )}
+                        <div className="bg-white border border-gray-100 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Time (Post-Assign)</span>
+                          <span className="text-base font-bold text-slate-800 mt-1.5">{timeToResolveAfterAssign}</span>
+                        </div>
+                        <div className="bg-white border border-gray-100 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Status Changes</span>
+                          <span className="text-base font-bold text-slate-800 mt-1.5">{totalStatusChanges} times</span>
+                        </div>
+                        <div className="bg-white border border-gray-100 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Longest in Status</span>
+                          <span className="text-base font-bold text-indigo-700 mt-1.5 truncate" title={maxStatusText}>{maxStatusText}</span>
                         </div>
                       </div>
-                    );
-                  });
+
+                      {/* Change Log Entries */}
+                      <div className="space-y-3">
+                        {visibleLogs.length === 0 ? (
+                          <p className="text-sm text-center text-gray-400 py-6">No changes recorded yet.</p>
+                        ) : (
+                          visibleLogs.map((log:any) => {
+                            const actionColors: Record<string,string> = {
+                              STATUS_CHANGE: 'bg-blue-100 text-blue-700',
+                              ASSIGN: 'bg-purple-100 text-purple-700',
+                              UPDATE: 'bg-gray-100 text-gray-600',
+                              COMMENT: 'bg-amber-100 text-amber-700',
+                              CREATE: 'bg-green-100 text-green-700',
+                            };
+                            const colorClass = actionColors[log.action] || 'bg-gray-100 text-gray-600';
+                            const changedKeys = (log.oldValues && log.newValues)
+                              ? Object.keys(log.newValues).filter(k =>
+                                  log.oldValues[k] !== undefined && log.oldValues[k] !== log.newValues[k]
+                                )
+                              : [];
+                            return (
+                              <div key={log.id} className="flex gap-3 text-sm border-b border-gray-50 pb-3 last:border-0">
+                                <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center flex-shrink-0 text-xs font-bold text-indigo-600">
+                                  {log.user ? `${log.user.firstName?.[0]}${log.user.lastName?.[0]}` : '⚙'}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-medium text-gray-900">{log.user ? `${log.user.firstName} ${log.user.lastName}` : 'System'}</span>
+                                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${colorClass}`}>{log.action.replace('_',' ')}</span>
+                                    <span className="text-xs text-gray-400 ml-auto">{format(new Date(log.createdAt), 'dd MMM yyyy HH:mm')}</span>
+                                  </div>
+                                  {changedKeys.length > 0 && (
+                                    <div className="mt-1 text-xs text-gray-500 space-y-0.5">
+                                      {changedKeys.map((k:string) => (
+                                        <div key={k}>
+                                          <span className="font-medium text-gray-700">{FIELD_LABELS[k] || k}:</span>
+                                          {' '}<span className="line-through text-red-400">{fmtVal(k, log.oldValues[k])}</span>
+                                          {' → '}<span className="text-green-600">{fmtVal(k, log.newValues[k])}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {log.newValues?.text && (
+                                    <p className="mt-1 text-xs text-gray-500 italic">"{String(log.newValues.text).slice(0,120)}{String(log.newValues.text).length>120?'…':''}"</p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  );
                 })()}
               </div>
             )}
@@ -629,10 +903,16 @@ export default function RecordDetailPage() {
                   <span className="text-gray-600">{format(new Date(record.createdAt),'MMM d, yyyy HH:mm')}</span>
                 </div>
                 {record.resolvedAt && (
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-400">Resolved</span>
-                    <span className="text-green-600">{format(new Date(record.resolvedAt),'MMM d, yyyy HH:mm')}</span>
-                  </div>
+                  <>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-400">Resolved</span>
+                      <span className="text-green-600">{format(new Date(record.resolvedAt),'MMM d, yyyy HH:mm')}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-400">Time to Resolve</span>
+                      <span className="text-blue-600 font-medium">{formatDistance(new Date(record.resolvedAt), new Date(record.createdAt))}</span>
+                    </div>
+                  </>
                 )}
               </div>
 

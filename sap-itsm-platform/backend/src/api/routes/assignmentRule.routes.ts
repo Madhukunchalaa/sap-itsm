@@ -14,7 +14,7 @@ async function getPMScope(req: Request): Promise<string[] | null> {
   const agent = await prisma.agent.findUnique({ where: { userId: req.user!.sub }, select: { id: true } });
   if (!agent) return [];
   const managed = await prisma.customer.findMany({
-    where: { projectManagerAgentId: agent.id, tenant: { id: req.user!.tenantId } },
+    where: { projectManagers: { some: { agentId: agent.id } }, tenant: { id: req.user!.tenantId } },
     select: { id: true },
   });
   return managed.map(c => c.id);

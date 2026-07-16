@@ -95,7 +95,7 @@ export default function AgentsPage() {
     }));
     // Pre-populate customers already assigned to this PM
     const currentlyAssigned = allCustomers
-      .filter((c: any) => c.projectManager?.id === a.id)
+      .filter((c: any) => c.projectManagers?.some((pm: any) => pm.agent?.id === a.id))
       .map((c: any) => c.id);
     setForm({
       agentType: a.agentType || 'AGENT',
@@ -177,17 +177,23 @@ export default function AgentsPage() {
         // For PM: sync customer assignments
         if (form.agentType === 'PROJECT_MANAGER') {
           const prevIds = allCustomers
-            .filter((c: any) => c.projectManager?.id === editId)
+            .filter((c: any) => c.projectManagers?.some((pm: any) => pm.agent?.id === editId))
             .map((c: any) => c.id);
           // Add newly assigned
           for (const cId of form.assignedCustomerIds) {
-            if (!prevIds.includes(cId))
-              await customersApi.update(cId, { projectManagerAgentId: editId });
+            if (!prevIds.includes(cId)) {
+              const c = allCustomers.find((x: any) => x.id === cId);
+              const existingIds = c?.projectManagers?.map((pm: any) => pm.agent?.id) || [];
+              await customersApi.update(cId, { projectManagerAgentIds: [...existingIds, editId] });
+            }
           }
           // Remove unassigned
           for (const cId of prevIds) {
-            if (!form.assignedCustomerIds.includes(cId))
-              await customersApi.update(cId, { projectManagerAgentId: null });
+            if (!form.assignedCustomerIds.includes(cId)) {
+              const c = allCustomers.find((x: any) => x.id === cId);
+              const newIds = (c?.projectManagers?.map((pm: any) => pm.agent?.id) || []).filter((id: string) => id !== editId);
+              await customersApi.update(cId, { projectManagerAgentIds: newIds });
+            }
           }
         }
         toast.success(`${form.agentType === 'PROJECT_MANAGER' ? 'Project Manager' : 'Agent'} updated`);
@@ -222,12 +228,15 @@ export default function AgentsPage() {
         // 4. For PM: assign selected customers
         if (form.agentType === 'PROJECT_MANAGER' && newAgentId) {
           for (const cId of form.assignedCustomerIds) {
-            await customersApi.update(cId, { projectManagerAgentId: newAgentId });
+            const c = allCustomers.find((x: any) => x.id === cId);
+            const existingIds = c?.projectManagers?.map((pm: any) => pm.agent?.id) || [];
+            await customersApi.update(cId, { projectManagerAgentIds: [...existingIds, newAgentId] });
           }
         }
         toast.success(`${form.agentType === 'PROJECT_MANAGER' ? 'Project Manager' : 'Agent'} created`);
       }
       qc.invalidateQueries({ queryKey: ['agents'] });
+      qc.invalidateQueries({ queryKey: ['customers-all'] });
       setShowModal(false);
     } catch(e) { toast.error(getErrorMessage(e)); }
     finally { setSaving(false); }
@@ -324,10 +333,10 @@ export default function AgentsPage() {
                   {!showAgentCols && (
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
-                        {allCustomers.filter((c: any) => c.projectManager?.id === a.id).map((c: any) => (
+                        {allCustomers.filter((c: any) => c.projectManagers?.some((pm: any) => pm.agent?.id === a.id)).map((c: any) => (
                           <span key={c.id} className="text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">{c.companyName}</span>
                         ))}
-                        {allCustomers.filter((c: any) => c.projectManager?.id === a.id).length === 0 && (
+                        {allCustomers.filter((c: any) => c.projectManagers?.some((pm: any) => pm.agent?.id === a.id)).length === 0 && (
                           <span className="text-gray-300 text-xs">—</span>
                         )}
                       </div>
@@ -446,9 +455,9 @@ export default function AgentsPage() {
                               }}
                               className="w-4 h-4 accent-indigo-600 rounded flex-shrink-0"/>
                             <span className={`text-sm font-medium ${checked ? 'text-indigo-700' : 'text-gray-700'}`}>{c.companyName}</span>
-                            {c.projectManager && c.projectManager.id !== editId && (
+                            {c.projectManagers && c.projectManagers.some((pm: any) => pm.agent?.id !== editId) && (
                               <span className="ml-auto text-xs text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
-                                has PM
+                                has other PM(s)
                               </span>
                             )}
                           </label>

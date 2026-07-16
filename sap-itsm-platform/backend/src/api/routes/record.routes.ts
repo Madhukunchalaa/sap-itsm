@@ -6,9 +6,11 @@ import {
   addCommentSchema, addTimeEntrySchema,
 } from '../validators/record.validators';
 import {
-  createRecord, listRecords, getRecord, updateRecord, addComment, addTimeEntry, deleteRecord,
+  createRecord, listRecords, getRecord, updateRecord, addComment, updateComment, deleteComment, addTimeEntry, deleteRecord,
 } from '../../services/record.service';
 import { prisma } from '../../config/database';
+import { generateTriage } from '../../services/chat.service';
+import { AppError } from '../../utils/AppError';
 import { resolveAgent, resolveManagedCustomerIds } from './scopeHelpers';
 import { buildPaginatedResult } from '../../utils/pagination';
 import multer from 'multer';
@@ -22,6 +24,33 @@ const router = Router();
 router.use(verifyJWT, enforceTenantScope);
 
 const EMPTY = { success: true, ...buildPaginatedResult([], 0, 1, 20) };
+
+// ─────────────────────────────────────────────────────────────
+// AI Triage — analyze a ticket and propose a solution + best agent.
+// Access: SUPER_ADMIN always, plus any email listed in AI_TRIAGE_EMAILS
+// (comma-separated). Suggestion only — never writes to the ticket.
+// ─────────────────────────────────────────────────────────────
+const TRIAGE_ALLOWED = (process.env.AI_TRIAGE_EMAILS || '')
+  .split(',')
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
+
+function canTriage(req: Request): boolean {
+  const u = req.user!;
+  return u.role === 'SUPER_ADMIN' || TRIAGE_ALLOWED.includes((u.email || '').toLowerCase());
+}
+
+router.post('/:id/ai-triage', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!canTriage(req)) {
+      throw new AppError('Access denied. AI triage is limited to Super Admin and authorized users.', 403);
+    }
+    const triage = await generateTriage(req.user!.tenantId, req.params.id);
+    res.json({ success: true, triage });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ─────────────────────────────────────────────────────────────
 // GET /records — list with role-based scoping
@@ -42,11 +71,13 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
     let customerIdIn:    string[] | undefined;
     let createdById:     string | undefined;
     let assignedAgentId: string | undefined;
+    let userOrModulesFilter: { createdById: string; customerId: string; sapModuleId: string } | undefined;
 
     switch (role) {
       case 'COMPANY_ADMIN': {
         if (!req.user!.customerId) { res.json(EMPTY); return; }
         customerId = req.user!.customerId;
+        if (q.createdById) createdById = q.createdById;
         break;
       }
       case 'PROJECT_MANAGER': {
@@ -54,23 +85,45 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
         if (!agent) { res.json(EMPTY); return; }
         const ids = await resolveManagedCustomerIds(agent.id, req.user!.tenantId);
         if (ids.length === 0) { res.json(EMPTY); return; }
-        customerIdIn = ids;
+        if (q.customerId) {
+          if (ids.includes(q.customerId)) {
+            customerId = q.customerId;
+          } else {
+            res.status(403).json({ success: false, error: 'Access denied to this customer' });
+            return;
+          }
+        } else {
+          customerIdIn = ids;
+        }
+        if (q.createdById) createdById = q.createdById;
         if (q.assignedAgentId) assignedAgentId = q.assignedAgentId;
         break;
       }
       case 'USER': {
-        createdById = req.user!.sub;
+        const fullUser = await prisma.user.findUnique({ where: { id: req.user!.sub }, select: { sapModuleId: true, customerId: true } });
+        if (fullUser?.sapModuleId && fullUser?.customerId) {
+          userOrModulesFilter = {
+            createdById: req.user!.sub,
+            customerId: fullUser.customerId,
+            sapModuleId: fullUser.sapModuleId
+          };
+        } else {
+          createdById = req.user!.sub;
+        }
         break;
       }
       case 'AGENT': {
         const agent = await resolveAgent(req.user!.sub);
         if (!agent) { res.json(EMPTY); return; }
         assignedAgentId = agent.id;
+        if (q.createdById) createdById = q.createdById;
+        if (q.customerId) customerId = q.customerId;
         break;
       }
-      // SUPER_ADMIN / PROJECT_MANAGER: allow optional agent filter from query
       default: {
         if (q.assignedAgentId) assignedAgentId = q.assignedAgentId;
+        if (q.createdById) createdById = q.createdById;
+        if (q.customerId) customerId = q.customerId;
         break;
       }
     }
@@ -82,7 +135,9 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
     const statusIn    = toArray(q.status);
     const recordTypeIn = toArray(q.recordType);
     const priorityIn  = toArray(q.priority);
-    const sapModuleIdIn = toArray(q.sapModuleId);
+    const sapModuleIdIn = req.user!.sapModuleId
+      ? [req.user!.sapModuleId]
+      : toArray(q.sapModuleId);
 
     const result = await listRecords({
       tenantId:        req.user!.tenantId,
@@ -96,6 +151,7 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
       createdById:     createdById,
       assignedAgentId: assignedAgentId,
       sapModuleIdIn:   sapModuleIdIn.length ? sapModuleIdIn : undefined,
+      userOrModulesFilter,
       plant:           q.plant,
       search:          q.search,
       sortBy:          q.sortBy,
@@ -115,6 +171,11 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const record = await getRecord(req.params.id, req.user!.tenantId) as any;
     if (!record) { res.status(404).json({ success: false, error: 'Not found' }); return; }
+
+    if (req.user!.sapModuleId && record.sapModuleId !== req.user!.sapModuleId) {
+      res.status(403).json({ success: false, error: 'Access denied - restricted SAP Module' });
+      return;
+    }
 
     const role   = req.user!.role;
     const userId = req.user!.sub;
@@ -138,6 +199,14 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       }
       case 'USER': {
         if (record.createdBy?.id !== userId) {
+          const fullUser = await prisma.user.findUnique({ where: { id: userId }, select: { sapModuleId: true, customerId: true } });
+          if (
+            fullUser?.sapModuleId &&
+            fullUser.sapModuleId === record.sapModuleId &&
+            fullUser.customerId === record.customerId
+          ) {
+            break; // Access granted via module assignment
+          }
           res.status(403).json({ success: false, error: 'Access denied' }); return;
         }
         break;
@@ -172,8 +241,12 @@ router.post('/',
   validate(createRecordSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const payload = { ...req.body };
+      if (req.user!.sapModuleId) {
+        payload.sapModuleId = req.user!.sapModuleId;
+      }
       const record = await createRecord({
-        ...req.body,
+        ...payload,
         tenantId: req.user!.tenantId,
         createdById: req.user!.sub,
       });
@@ -267,6 +340,34 @@ router.post('/:id/comment', validate(addCommentSchema),
         req.body.text, req.body.internalFlag ?? false,
       );
       res.status(201).json({ success: true, comment });
+    } catch (err) { next(err); }
+  }
+);
+
+// ─────────────────────────────────────────────────────────────
+// PATCH /records/:id/comment/:commentId — edit own comment
+// DELETE /records/:id/comment/:commentId — own comment, or SUPER_ADMIN
+// ─────────────────────────────────────────────────────────────
+router.patch('/:id/comment/:commentId',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const text = String(req.body.text || '').trim();
+      if (!text) throw new AppError('Comment text is required', 400, 'VALIDATION');
+      const comment = await updateComment(
+        req.params.id, req.params.commentId, req.user!.tenantId, req.user!.sub, req.body.text,
+      );
+      res.json({ success: true, comment });
+    } catch (err) { next(err); }
+  }
+);
+
+router.delete('/:id/comment/:commentId',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await deleteComment(
+        req.params.id, req.params.commentId, req.user!.tenantId, req.user!.sub, req.user!.role,
+      );
+      res.json({ success: true });
     } catch (err) { next(err); }
   }
 );

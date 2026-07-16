@@ -51,6 +51,7 @@ export interface ListRecordsInput {
   sortOrder?: 'asc' | 'desc';
   from?: string;
   to?: string;
+  userOrModulesFilter?: { createdById: string; customerId: string; sapModuleId: string };
 }
 
 const RECORD_SELECT = {
@@ -279,7 +280,24 @@ export async function listRecords(input: ListRecordsInput) {
     ...(input.sapModuleId      && { sapModuleId: input.sapModuleId }),
     ...(input.sapModuleIdIn?.length && { sapModuleId: { in: input.sapModuleIdIn } }),
     ...(input.plant            && { plant: input.plant }),
-    ...(input.search && {
+  };
+
+  const andConditions: Prisma.ITSMRecordWhereInput[] = [];
+
+  if (input.userOrModulesFilter) {
+    andConditions.push({
+      OR: [
+        { createdById: input.userOrModulesFilter.createdById },
+        { 
+          customerId: input.userOrModulesFilter.customerId,
+          sapModuleId: input.userOrModulesFilter.sapModuleId
+        }
+      ]
+    });
+  }
+
+  if (input.search) {
+    andConditions.push({
       OR: [
         { title:        { contains: input.search, mode: 'insensitive' } },
         { description:  { contains: input.search, mode: 'insensitive' } },
@@ -287,14 +305,21 @@ export async function listRecords(input: ListRecordsInput) {
         { sapModule:    { code: { contains: input.search, mode: 'insensitive' } } },
         { sapModule:    { name: { contains: input.search, mode: 'insensitive' } } },
       ],
-    }),
-    ...((input.from || input.to) ? {
+    });
+  }
+
+  if (input.from || input.to) {
+    andConditions.push({
       createdAt: {
         ...(input.from && { gte: new Date(input.from) }),
         ...(input.to   && { lte: new Date(input.to) }),
       },
-    } : {}),
-  };
+    });
+  }
+
+  if (andConditions.length > 0) {
+    where.AND = andConditions;
+  }
 
   const orderBy: Prisma.ITSMRecordOrderByWithRelationInput = {
     [input.sortBy || 'createdAt']: input.sortOrder || 'desc',
@@ -319,7 +344,7 @@ export async function getRecord(id: string, tenantId: string) {
       ...RECORD_SELECT,
       comments: {
         select: {
-          id: true, text: true, internalFlag: true, createdAt: true,
+          id: true, text: true, internalFlag: true, createdAt: true, updatedAt: true,
           author: { select: { id: true, firstName: true, lastName: true, role: true } },
         },
         orderBy: { createdAt: 'asc' },
@@ -464,6 +489,54 @@ export async function updateRecord(
   }
 
   return updated;
+}
+
+export async function updateComment(
+  recordId: string, commentId: string, tenantId: string, userId: string, text: string
+) {
+  const comment = await prisma.comment.findFirst({
+    where: { id: commentId, recordId, record: { tenantId } },
+  });
+  if (!comment) throw new AppError('Comment not found', 404, 'NOT_FOUND');
+  if (comment.authorId !== userId) {
+    throw new AppError('You can only edit your own comments', 403, 'FORBIDDEN');
+  }
+
+  const updated = await prisma.comment.update({
+    where: { id: commentId },
+    data: { text },
+    include: { author: { select: { id: true, firstName: true, lastName: true, role: true } } },
+  });
+
+  await cache.del(`record:${recordId}`);
+  await auditLog({
+    tenantId, userId, recordId,
+    action: 'UPDATE', entityType: 'Comment', entityId: commentId,
+    oldValues: { length: comment.text.length },
+    newValues: { length: text.length },
+  });
+  return updated;
+}
+
+export async function deleteComment(
+  recordId: string, commentId: string, tenantId: string, userId: string, userRole: string
+) {
+  const comment = await prisma.comment.findFirst({
+    where: { id: commentId, recordId, record: { tenantId } },
+  });
+  if (!comment) throw new AppError('Comment not found', 404, 'NOT_FOUND');
+  if (comment.authorId !== userId && userRole !== 'SUPER_ADMIN') {
+    throw new AppError('You can only delete your own comments', 403, 'FORBIDDEN');
+  }
+
+  await prisma.comment.delete({ where: { id: commentId } });
+  await cache.del(`record:${recordId}`);
+  await auditLog({
+    tenantId, userId, recordId,
+    action: 'DELETE', entityType: 'Comment', entityId: commentId,
+    oldValues: { authorId: comment.authorId, length: comment.text.length },
+  });
+  return { deleted: true };
 }
 
 export async function addComment(

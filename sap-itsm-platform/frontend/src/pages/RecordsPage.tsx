@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Filter, Plus, X, Download } from 'lucide-react';
-import { useRecords, useSapModules, useAgents } from '../hooks/useApi';
+import { useRecords, useSapModules, useAgents, useUsers, useCustomers } from '../hooks/useApi';
 import { DataTable, Column } from '../components/ui/DataTable';
 import { PriorityBadge, StatusBadge, TypeBadge, SLABadge } from '../components/ui/Badges';
 import { useResolvedTicketCount } from '../hooks/useApi';
@@ -96,6 +96,19 @@ export default function RecordsPage() {
     label: `${a.user.firstName} ${a.user.lastName}`,
   }));
 
+  const canFilterByCreator = user?.role !== 'USER';
+  const { data: usersData } = useUsers(canFilterByCreator ? { limit: 500 } : undefined);
+  const creatorOptions: MultiSelectOption[] = (usersData?.data || []).map((u: any) => ({
+    value: u.id,
+    label: `${u.firstName} ${u.lastName}`,
+  }));
+
+  const { data: customersData } = useCustomers({ limit: 200 });
+  const customerOptions = (customersData?.data || []).map((c: any) => ({
+    value: c.id,
+    label: c.companyName,
+  }));
+
   // ── State from Store ───────────────────────────────────────
   const {
     filters, setFilters,
@@ -104,7 +117,9 @@ export default function RecordsPage() {
     selPriority, setSelPriority,
     selModule, setSelModule,
     selPlant, setSelPlant,
+    selCustomer, setSelCustomer,
     selAgent, setSelAgent,
+    selCreator, setSelCreator,
     search, setSearch,
     showFilters, setShowFilters,
     selectedIds, setSelectedIds, toggleSelectedId,
@@ -122,7 +137,9 @@ export default function RecordsPage() {
     priority:        selPriority.length ? (selPriority as any) : undefined,
     sapModuleId:     selModule.length   ? (selModule as any)   : undefined,
     plant:           selPlant           || undefined,
+    customerId:      selCustomer        || undefined,
     assignedAgentId: selAgent           || undefined,
+    createdById:     selCreator         || undefined,
     search:          search             || undefined,
   });
 
@@ -132,7 +149,9 @@ export default function RecordsPage() {
     (selPriority.length > 0 ? 1 : 0) +
     (selModule.length   > 0 ? 1 : 0) +
     (selPlant           ? 1 : 0) +
-    (selAgent           ? 1 : 0);
+    (selCustomer        ? 1 : 0) +
+    (selAgent           ? 1 : 0) +
+    (selCreator         ? 1 : 0);
 
   const handleExportExcel = async () => {
     let records = data?.data || [];
@@ -147,7 +166,10 @@ export default function RecordsPage() {
           recordType:      selType.length     ? (selType as any)     : undefined,
           priority:        selPriority.length ? (selPriority as any) : undefined,
           sapModuleId:     selModule.length   ? (selModule as any)   : undefined,
+          plant:           selPlant           || undefined,
+          customerId:      selCustomer        || undefined,
           assignedAgentId: selAgent           || undefined,
+          createdById:     selCreator         || undefined,
           search:          search             || undefined,
           limit,
           page: 1,
@@ -269,6 +291,26 @@ export default function RecordsPage() {
     ) : <span className="text-xs text-gray-300">—</span>,
     className: 'w-36',
   };
+    const plantColumn: Column<any> = {
+    key: 'plant',
+    header: 'Plant',
+    render: (row) => row.plant ? (
+      <span className="text-xs font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5">
+        {row.plant}
+      </span>
+    ) : <span className="text-xs text-gray-300">—</span>,
+    className: 'w-28',
+  };
+    const clientColumn: Column<any> = {
+    key: 'customer',
+    header: 'Client',
+    render: (row) => row.customer ? (
+      <span className="text-sm font-medium text-gray-700">
+        {row.customer.companyName}
+      </span>
+    ) : <span className="text-xs text-gray-300">—</span>,
+    className: 'w-44',
+  };
 
   const tailColumns: Column<any>[] = [
     {
@@ -301,8 +343,8 @@ export default function RecordsPage() {
   ];
 
   const columns: Column<any>[] = canSeeModuleColumn
-    ? [...baseColumns, moduleColumn, ...tailColumns]
-    : [...baseColumns, ...tailColumns];
+    ? [...baseColumns,plantColumn,clientColumn, moduleColumn, ...tailColumns]
+    : [...baseColumns,plantColumn,clientColumn, ...tailColumns];
 
   // ── Sort helper ──────────────────────────────────────────────
   const sortValue = `${filters.sortBy}_${filters.sortOrder}`;
@@ -471,6 +513,24 @@ export default function RecordsPage() {
             </div>
           )}
 
+          {/* Created By */}
+          {canFilterByCreator && (
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
+                Created By
+                {selCreator && <span className="text-blue-600 font-semibold">1</span>}
+              </label>
+              <select
+                value={selCreator}
+                onChange={(e) => { setSelCreator(e.target.value); setFilters({ page: 1 }); }}
+                className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="">All Users</option>
+                {creatorOptions.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+          )}
+
           {/* Plant */}
           <div>
             <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
@@ -486,6 +546,24 @@ export default function RecordsPage() {
               <option value="SEPC - 3121">SEPC - 3121</option>
               <option value="TAQA - 2301">TAQA - 2301</option>
               <option value="2121 - Anpara">2121 - Anpara</option>
+            </select>
+          </div>
+
+          {/* Client / Customer */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
+              Client
+              {selCustomer && <span className="text-blue-600 font-semibold">1</span>}
+            </label>
+            <select
+              value={selCustomer}
+              onChange={(e) => { setSelCustomer(e.target.value); setFilters({ page: 1 }); }}
+              className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="">All Clients</option>
+              {customerOptions.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
             </select>
           </div>
 

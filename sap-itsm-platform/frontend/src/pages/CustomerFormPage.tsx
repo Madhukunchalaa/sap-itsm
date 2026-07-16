@@ -34,7 +34,7 @@ function F({ label, required, hint, children }: { label: string; required?: bool
 const blank = {
   companyName: '', industry: '', country: 'India', timezone: 'IST', status: 'ACTIVE', website: '',
   contactName: '', contactEmail: '', contactPhone: '', billingEmail: '', billingAddress: '',
-  adminUserId: '', projectManagerAgentId: '', holidayCalendarId: '',
+  adminUserId: '', projectManagerAgentIds: [] as string[], holidayCalendarId: '',
   agentIds: [] as string[], notes: '', allowedDomains: '',
 };
 
@@ -67,7 +67,7 @@ export default function CustomerFormPage() {
         billingEmail: existing.billingEmail || '',
         billingAddress: existing.billingAddress || '',
         adminUserId: existing.adminUserId || '',
-        projectManagerAgentId: existing.projectManagerAgentId || '',
+        projectManagerAgentIds: (existing.projectManagers || []).map((pm: any) => pm.agentId),
         holidayCalendarId: existing.holidayCalendarId || '',
         agentIds: (existing.customerAgents || []).map((ca: any) => ca.agentId),
         notes: existing.notes || '',
@@ -100,7 +100,7 @@ export default function CustomerFormPage() {
           ? form.allowedDomains.split(',').map((d: string) => d.trim().toLowerCase()).filter(Boolean)
           : [],
         adminUserId:           form.adminUserId           || undefined,
-        projectManagerAgentId: form.projectManagerAgentId || undefined,
+        projectManagerAgentIds: form.projectManagerAgentIds.length > 0 ? form.projectManagerAgentIds : undefined,
         holidayCalendarId:     form.holidayCalendarId     || undefined,
       };
       if (isEdit) {
@@ -223,11 +223,21 @@ export default function CustomerFormPage() {
                   {cas.map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
                 </select>
               </F>
-              <F label="Project Manager" hint="Only Project Manager agents are listed">
-                <select value={form.projectManagerAgentId} onChange={e => setF('projectManagerAgentId', e.target.value)} className={ic}>
-                  <option value="">— None —</option>
-                  {pms.map(a => <option key={a.id} value={a.id}>{a.user?.firstName} {a.user?.lastName}</option>)}
-                </select>
+              <F label="Project Managers" hint="Select one or more PMs">
+                <div className="space-y-2 max-h-32 overflow-y-auto p-2 border border-gray-300 rounded-xl bg-white">
+                  {pms.map(a => (
+                    <label key={a.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 px-2 py-1 rounded">
+                      <input 
+                        type="checkbox" 
+                        className="accent-blue-600 rounded" 
+                        checked={form.projectManagerAgentIds.includes(a.id)}
+                        onChange={() => toggle('projectManagerAgentIds' as any, a.id)}
+                      />
+                      <span>{a.user?.firstName} {a.user?.lastName}</span>
+                    </label>
+                  ))}
+                  {pms.length === 0 && <span className="text-sm text-gray-400">No PMs available</span>}
+                </div>
               </F>
             </div>
             <F label="Holiday Calendar">

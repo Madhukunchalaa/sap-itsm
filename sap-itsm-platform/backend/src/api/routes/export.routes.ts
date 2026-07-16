@@ -43,7 +43,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       customers: () => prisma.customer.findMany({
         where,
         include: {
-          projectManager: { select: { id: true, user: { select: { email: true, firstName: true, lastName: true } } } },
+          projectManagers: { select: { agent: { select: { user: { select: { email: true, firstName: true, lastName: true } } } } } },
         },
       }),
 

@@ -1,0 +1,21 @@
+﻿-- DropForeignKey
+ALTER TABLE "customers" DROP CONSTRAINT "customers_project_manager_agent_id_fkey";
+
+-- AlterTable
+ALTER TABLE "customers" DROP COLUMN "project_manager_agent_id";
+
+-- CreateTable
+CREATE TABLE "customer_project_managers" (
+    "customer_id" TEXT NOT NULL,
+    "agent_id" TEXT NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "customer_project_managers_pkey" PRIMARY KEY ("customer_id","agent_id")
+);
+
+-- AddForeignKey
+ALTER TABLE "customer_project_managers" ADD CONSTRAINT "customer_project_managers_agent_id_fkey" FOREIGN KEY ("agent_id") REFERENCES "agents"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "customer_project_managers" ADD CONSTRAINT "customer_project_managers_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "customers"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+

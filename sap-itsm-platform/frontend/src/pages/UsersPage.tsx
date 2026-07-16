@@ -6,7 +6,7 @@ import { customersApi } from '../api/services';
 import { PageHeader, Button, Input, Select } from '../components/ui/Forms';
 import { Modal } from '../components/ui/Modal';
 import { useAuthStore } from '../store/auth.store';
-import { usersApi } from '../api/services';
+import { usersApi, sapModulesApi } from '../api/services';
 import { useQueryClient } from '@tanstack/react-query';
 import { getErrorMessage } from '../api/client';
 import toast from 'react-hot-toast';
@@ -59,11 +59,19 @@ export default function UsersPage() {
   const handleEdit = (u: any) => {
     setForm({
       email: u.email, password:'', firstName: u.firstName, lastName: u.lastName,
-      role: u.role, status: u.status, customerId: u.customerId || '',
+      role: u.role, status: u.status, customerId: u.customerId || '', sapModuleId: u.sapModuleId || '',
     });
     setEditUser(u);
     setModal(true);
   };
+
+  // Fetch SAP Modules for the dropdown
+  const { data: sapModulesData } = useQuery({
+    queryKey: ['sap-modules-list'],
+    queryFn: () => sapModulesApi.list().then(r => r.data.data || []),
+    enabled: showModal,
+  });
+  const sapModules: any[] = sapModulesData || [];
 
   const handleSave = async () => {
     setSaving(true);
@@ -76,6 +84,7 @@ export default function UsersPage() {
           role: form.role,
           status: form.status,
           customerId: form.customerId || null,
+          sapModuleId: form.sapModuleId || null,
           ...(form.password ? { password: form.password } : {}),
         });
         toast.success('User updated');
@@ -83,6 +92,7 @@ export default function UsersPage() {
         await usersApi.create({
           ...form,
           ...(form.customerId ? { customerId: form.customerId } : {}),
+          ...(form.sapModuleId ? { sapModuleId: form.sapModuleId } : {}),
         });
         toast.success('User created');
       }
@@ -339,6 +349,23 @@ export default function UsersPage() {
                   <option key={cu.id} value={cu.id}>{cu.companyName}</option>
                 ))}
               </select>
+            </div>
+          )}
+          {form.role === 'USER' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Authorized SAP Module
+              </label>
+              <select value={form.sapModuleId} onChange={e=>setForm(f=>({...f,sapModuleId:e.target.value}))}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+                <option value="">— None (Can only view own tickets) —</option>
+                {sapModules.map((m:any) => (
+                  <option key={m.id} value={m.id}>{m.code} - {m.name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Allows this user to view and track all company tickets for this specific module.
+              </p>
             </div>
           )}
         </div>

@@ -138,21 +138,21 @@ router.get('/debug-scope', verifyJWT, enforceTenantScope, async (req: Request, r
       }
     } else if (role === 'PROJECT_MANAGER') {
       const agent = await prisma.agent.findUnique({ where: { userId } });
-      debug.scope.type = 'PROJECT_MANAGER → filters by Customer.projectManagerAgentId';
+      debug.scope.type = 'PROJECT_MANAGER → filters by CustomerProjectManager relation';
       debug.scope.agent = agent ? { id: agent.id, agentType: (agent as any).agentType } : null;
       if (agent) {
-        const managedCustomers = await prisma.customer.findMany({
-          where: { projectManagerAgentId: agent.id, tenantId },
-          select: { id: true, companyName: true },
+        const managedCustomers = await prisma.customerProjectManager.findMany({
+          where: { agentId: agent.id, customer: { tenantId } },
+          include: { customer: { select: { id: true, companyName: true } } },
         });
-        debug.scope.managedCustomers = managedCustomers;
-        const validIds = managedCustomers.map(c => c.id);
+        debug.scope.managedCustomers = managedCustomers.map(m => m.customer);
+        const validIds = managedCustomers.map(m => m.customer.id);
         debug.scope.managedCustomerIds = validIds;
         if (validIds.length > 0) {
           const recordCount = await prisma.iTSMRecord.count({ where: { tenantId, customerId: { in: validIds } } });
           debug.scope.recordCount = recordCount;
         } else {
-          debug.scope.problem = 'No customers have projectManagerAgentId pointing to this agent. Fix: set Customer.projectManagerAgentId = this agent ID for each managed company.';
+          debug.scope.problem = 'No customers have been assigned to this PM agent. Fix: assign the PM to one or more companies.';
         }
       } else {
         debug.scope.problem = 'No Agent record found for this PM user. Fix: create an Agent record (agentType=PROJECT_MANAGER) linked to this userId.';

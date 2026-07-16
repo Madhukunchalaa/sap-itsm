@@ -16,14 +16,14 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const tenantId = req.user!.tenantId;
     const isCompanyAdmin = req.user!.role === 'COMPANY_ADMIN';
     let companyCustomerId: string | null = null;
-    let companyPMAgentId: string | null = null;
+    let companyPMAgentIds: string[] = [];
     if (isCompanyAdmin) {
       const customer = await prisma.customer.findFirst({
         where: { adminUserId: req.user!.sub },
-        select: { id: true, projectManagerAgentId: true },
+        select: { id: true, projectManagers: { select: { agentId: true } } },
       });
       companyCustomerId = customer?.id || null;
-      companyPMAgentId = customer?.projectManagerAgentId || null;
+      companyPMAgentIds = customer?.projectManagers.map(pm => pm.agentId) || [];
     }
 
     const where: any = {
@@ -35,12 +35,11 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       ...(req.query.customerId && {
         customerAgents: { some: { customerId: req.query.customerId as string } },
       }),
-      // COMPANY_ADMIN: scope to agents in their customerAgents OR their assigned PM
+      // COMPANY_ADMIN: scope to agents in their customerAgents OR their assigned PMs
       ...(isCompanyAdmin && companyCustomerId && !req.query.customerId && {
         OR: [
           { customerAgents: { some: { customerId: companyCustomerId } } },
-          // Also include PM even though they're not in customerAgents
-          ...(companyPMAgentId ? [{ id: companyPMAgentId }] : []),
+          ...(companyPMAgentIds.length > 0 ? [{ id: { in: companyPMAgentIds } }] : []),
         ],
       }),
     };
