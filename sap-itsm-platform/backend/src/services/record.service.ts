@@ -345,6 +345,7 @@ export async function getRecord(id: string, tenantId: string) {
       comments: {
         select: {
           id: true, text: true, internalFlag: true, createdAt: true, updatedAt: true,
+          deletedAt: true, deletedByName: true,
           author: { select: { id: true, firstName: true, lastName: true, role: true } },
         },
         orderBy: { createdAt: 'asc' },
@@ -363,6 +364,13 @@ export async function getRecord(id: string, tenantId: string) {
   });
 
   if (!record) throw new AppError('Record not found', 404, 'NOT_FOUND');
+
+  // Soft-deleted comments become tombstones — never ship the original text.
+  if (record.comments) {
+    (record as any).comments = (record.comments as any[]).map((c) =>
+      c.deletedAt ? { ...c, text: '' } : c
+    );
+  }
 
   await cache.set(cacheKey, record, 120);
   return record;
@@ -498,6 +506,7 @@ export async function updateComment(
     where: { id: commentId, recordId, record: { tenantId } },
   });
   if (!comment) throw new AppError('Comment not found', 404, 'NOT_FOUND');
+  if (comment.deletedAt) throw new AppError('This comment has been deleted and cannot be edited', 400, 'VALIDATION');
   if (comment.authorId !== userId) {
     throw new AppError('You can only edit your own comments', 403, 'FORBIDDEN');
   }
@@ -525,16 +534,31 @@ export async function deleteComment(
     where: { id: commentId, recordId, record: { tenantId } },
   });
   if (!comment) throw new AppError('Comment not found', 404, 'NOT_FOUND');
+  if (comment.deletedAt) throw new AppError('This comment is already deleted', 400, 'VALIDATION');
   if (comment.authorId !== userId && userRole !== 'SUPER_ADMIN') {
     throw new AppError('You can only delete your own comments', 403, 'FORBIDDEN');
   }
 
-  await prisma.comment.delete({ where: { id: commentId } });
+  // Soft delete: keep a tombstone recording who deleted it. The text stays in
+  // the DB for audit purposes but is never returned to clients (see getRecord).
+  const deleter = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { firstName: true, lastName: true },
+  });
+  const deletedByName = deleter
+    ? `${deleter.firstName} ${deleter.lastName || ''}`.trim()
+    : 'Unknown';
+
+  await prisma.comment.update({
+    where: { id: commentId },
+    data: { deletedAt: new Date(), deletedByName },
+  });
   await cache.del(`record:${recordId}`);
   await auditLog({
     tenantId, userId, recordId,
     action: 'DELETE', entityType: 'Comment', entityId: commentId,
     oldValues: { authorId: comment.authorId, length: comment.text.length },
+    newValues: { deletedByName },
   });
   return { deleted: true };
 }

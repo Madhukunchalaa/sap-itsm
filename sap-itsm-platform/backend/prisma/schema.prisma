@@ -539,6 +539,8 @@ model Comment {
   text         String
   internalFlag Boolean    @default(false) @map("internal_flag")
   attachments  Json?      @default("[]")
+  deletedAt     DateTime? @map("deleted_at")
+  deletedByName String?   @map("deleted_by_name")
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
   author       User       @relation(fields: [authorId], references: [id])

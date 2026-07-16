@@ -421,10 +421,11 @@ export default function RecordDetailPage() {
               <div className="p-4 space-y-4">
                 {(record.comments||[]).length===0 && <p className="text-sm text-center text-gray-400 py-6">No comments yet.</p>}
                 {(record.comments||[]).map((c:any) => {
+                  const isDeleted = !!c.deletedAt;
                   const isOwn = c.author?.id === user?.id;
-                  const canEditComment = isOwn;
-                  const canDeleteComment = isOwn || user?.role === 'SUPER_ADMIN';
-                  const isEdited = c.updatedAt && new Date(c.updatedAt).getTime() - new Date(c.createdAt).getTime() > 2000;
+                  const canEditComment = isOwn && !isDeleted;
+                  const canDeleteComment = (isOwn || user?.role === 'SUPER_ADMIN') && !isDeleted;
+                  const isEdited = !isDeleted && c.updatedAt && new Date(c.updatedAt).getTime() - new Date(c.createdAt).getTime() > 2000;
                   return (
                   <div key={c.id} className="flex gap-3 group">
                     <div className="w-8 h-8 rounded-full bg-slate-700 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
@@ -438,7 +439,11 @@ export default function RecordDetailPage() {
                             <Lock className="w-3 h-3"/> Internal
                           </span>
                         )}
-                        {isEdited && <span className="text-[11px] text-gray-400 italic">(edited)</span>}
+                        {isEdited && (
+                          <span className="text-[11px] text-gray-400 italic">
+                            (edited by {c.author.firstName} {c.author.lastName})
+                          </span>
+                        )}
                         <span className="text-xs text-gray-400 ml-auto">{formatDistanceToNow(new Date(c.createdAt),{addSuffix:true})}</span>
                         {editingCommentId !== c.id && deletingCommentId !== c.id && (canEditComment || canDeleteComment) && (
                           <span className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -460,7 +465,13 @@ export default function RecordDetailPage() {
                         )}
                       </div>
 
-                      {editingCommentId === c.id ? (
+                      {isDeleted ? (
+                        <div className="text-sm italic text-gray-400 bg-gray-50 border border-dashed border-gray-200 rounded-xl px-4 py-3 flex items-center gap-2">
+                          <Trash2 className="w-3.5 h-3.5 flex-shrink-0"/>
+                          This comment was deleted by {c.deletedByName || 'a user'}
+                          {c.deletedAt && <span className="text-[11px] not-italic text-gray-300 ml-auto">{formatDistanceToNow(new Date(c.deletedAt),{addSuffix:true})}</span>}
+                        </div>
+                      ) : editingCommentId === c.id ? (
                         <div className="space-y-2">
                           <ReactQuill value={editingCommentText} onChange={setEditingCommentText} theme="snow"/>
                           <div className="flex gap-2 justify-end">
