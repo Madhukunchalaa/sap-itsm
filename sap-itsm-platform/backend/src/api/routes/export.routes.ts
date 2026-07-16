@@ -5,10 +5,9 @@ import { AppError } from '../../utils/AppError';
 
 const router = Router();
 
-import { emailQueue } from '../../workers/queues';
-
 router.get('/backup-email', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const { emailQueue } = await import('../../workers/queues');
     await emailQueue.add('sendEmail', {
       event: 'DB_BACKUP',
       recipient: 'mkunchala@intraedge.com',
