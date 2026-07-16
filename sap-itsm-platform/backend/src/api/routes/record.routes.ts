@@ -135,6 +135,12 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
     const statusIn    = toArray(q.status);
     const recordTypeIn = toArray(q.recordType);
     const priorityIn  = toArray(q.priority);
+
+    // Agent filter may be a single id or an array (multi-select checkboxes).
+    // Role scoping above may have forced a single id (AGENT) — normalize both.
+    const agentIdArr = toArray(assignedAgentId as any);
+    const assignedAgentIdSingle = agentIdArr.length === 1 ? agentIdArr[0] : undefined;
+    const assignedAgentIdIn     = agentIdArr.length > 1  ? agentIdArr    : undefined;
     const sapModuleIdIn = req.user!.sapModuleId
       ? [req.user!.sapModuleId]
       : toArray(q.sapModuleId);
@@ -149,7 +155,8 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
       customerId:      customerIdIn ? undefined : customerId,
       customerIdIn:    customerIdIn,
       createdById:     createdById,
-      assignedAgentId: assignedAgentId,
+      assignedAgentId: assignedAgentIdSingle,
+      assignedAgentIdIn: assignedAgentIdIn,
       sapModuleIdIn:   sapModuleIdIn.length ? sapModuleIdIn : undefined,
       userOrModulesFilter,
       plant:           q.plant,

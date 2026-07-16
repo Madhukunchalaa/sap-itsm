@@ -138,7 +138,7 @@ export default function RecordsPage() {
     sapModuleId:     selModule.length   ? (selModule as any)   : undefined,
     plant:           selPlant           || undefined,
     customerId:      selCustomer        || undefined,
-    assignedAgentId: selAgent           || undefined,
+    assignedAgentId: selAgent.length    ? (selAgent as any)   : undefined,
     createdById:     selCreator         || undefined,
     search:          search             || undefined,
   });
@@ -150,7 +150,7 @@ export default function RecordsPage() {
     (selModule.length   > 0 ? 1 : 0) +
     (selPlant           ? 1 : 0) +
     (selCustomer        ? 1 : 0) +
-    (selAgent           ? 1 : 0) +
+    (selAgent.length    > 0 ? 1 : 0) +
     (selCreator         ? 1 : 0);
 
   const handleExportExcel = async () => {
@@ -168,7 +168,7 @@ export default function RecordsPage() {
           sapModuleId:     selModule.length   ? (selModule as any)   : undefined,
           plant:           selPlant           || undefined,
           customerId:      selCustomer        || undefined,
-          assignedAgentId: selAgent           || undefined,
+          assignedAgentId: selAgent.length    ? (selAgent as any)   : undefined,
           createdById:     selCreator         || undefined,
           search:          search             || undefined,
           limit,
@@ -500,16 +500,14 @@ export default function RecordsPage() {
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
                 Agent
-                {selAgent && <span className="text-blue-600 font-semibold">1</span>}
+                {selAgent.length > 0 && <span className="text-blue-600 font-semibold">{selAgent.length}</span>}
               </label>
-              <select
-                value={selAgent}
-                onChange={(e) => setSelAgent(e.target.value)}
-                className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="">All Agents</option>
-                {agentOptions.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-              </select>
+              <MultiSelectDropdown
+                options={agentOptions}
+                selected={selAgent}
+                onChange={(v) => { setSelAgent(v); setFilters({ page: 1 }); }}
+                placeholder="All Agents"
+              />
             </div>
           )}
 

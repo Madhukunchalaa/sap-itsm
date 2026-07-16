@@ -30,7 +30,7 @@ export interface RecordFilters {
   recordType?: string | string[];
   status?: string | string[];
   priority?: string | string[];
-  assignedAgentId?: string;
+  assignedAgentId?: string | string[];
   createdById?: string;
   customerId?: string;
   sapModuleId?: string | string[];

@@ -60,7 +60,12 @@ export const listRecordsSchema = z.object({
         z.array(z.enum(['P1', 'P2', 'P3', 'P4'])),
       ])
       .optional(),
-    assignedAgentId: z.string().uuid().optional(),
+    assignedAgentId: z
+      .union([
+        z.string().uuid(),
+        z.array(z.string().uuid()),
+      ])
+      .optional(),
     createdById: z.string().uuid().optional(),
     customerId: z.string().uuid().optional(),
     sapModuleId: z

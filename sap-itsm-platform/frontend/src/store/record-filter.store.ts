@@ -18,7 +18,7 @@ interface RecordFilterState {
   selModule: string[];
   selPlant: string;
   selCustomer: string;
-  selAgent: string;
+  selAgent: string[];
   selCreator: string;
   
   search: string;
@@ -35,7 +35,7 @@ interface RecordFilterState {
   setSelModule: (module: string[]) => void;
   setSelPlant: (plant: string) => void;
   setSelCustomer: (customerId: string) => void;
-  setSelAgent: (agentId: string) => void;
+  setSelAgent: (agentIds: string[]) => void;
   setSelCreator: (creatorId: string) => void;
   setSearch: (search: string) => void;
   setShowFilters: (show: boolean) => void;
@@ -57,7 +57,7 @@ const initialState = {
   selModule: [],
   selPlant: '',
   selCustomer: '',
-  selAgent: '',
+  selAgent: [],
   selCreator: '',
   search: '',
   showFilters: false,
@@ -95,6 +95,14 @@ export const useRecordFilterStore = create<RecordFilterState>()(
     }),
     {
       name: 'record-filters',
+      version: 1,
+      // v0 stored selAgent as a single string; v1 uses an array (multi-select).
+      migrate: (persisted: any) => {
+        if (persisted && typeof persisted.selAgent === 'string') {
+          persisted.selAgent = persisted.selAgent ? [persisted.selAgent] : [];
+        }
+        return persisted;
+      },
     }
   )
 );

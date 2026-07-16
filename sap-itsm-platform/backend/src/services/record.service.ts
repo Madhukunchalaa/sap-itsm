@@ -40,6 +40,7 @@ export interface ListRecordsInput {
   priority?: Priority;
   priorityIn?: Priority[];
   assignedAgentId?: string;
+  assignedAgentIdIn?: string[];  // multi-agent filter
   customerId?: string;
   customerIdIn?: string[];  // PROJECT_MANAGER role: scope to managed company IDs
   createdById?: string;     // USER role: scope to own tickets only
@@ -274,6 +275,7 @@ export async function listRecords(input: ListRecordsInput) {
     ...(input.priority         && { priority: input.priority }),
     ...(input.priorityIn?.length && { priority: { in: input.priorityIn } }),
     ...(input.assignedAgentId  && { assignedAgentId: input.assignedAgentId }),
+    ...(input.assignedAgentIdIn?.length && { assignedAgentId: { in: input.assignedAgentIdIn } }),
     ...(input.customerId       && { customerId: input.customerId }),
     ...(input.customerIdIn     && { customerId: { in: input.customerIdIn } }),
     ...(input.createdById      && { createdById: input.createdById }),
