@@ -7,9 +7,9 @@ const router = Router();
 
 router.get('/backup-email', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { emailQueue } = await import('../../workers/queues');
-    await emailQueue.add('sendEmail', {
-      event: 'DB_BACKUP',
+    const { sendEmail } = await import('../../services/email.service');
+    await sendEmail({
+      templateKey: 'DB_BACKUP',
       recipient: 'mkunchala@intraedge.com',
       variables: { date: new Date().toLocaleDateString() },
       attachments: [
@@ -19,7 +19,7 @@ router.get('/backup-email', async (req: Request, res: Response, next: NextFuncti
         }
       ]
     });
-    res.json({ success: true, message: 'Backup email job queued' });
+    res.json({ success: true, message: 'Backup email sent successfully' });
   } catch (err) {
     next(err);
   }
