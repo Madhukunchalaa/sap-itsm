@@ -249,7 +249,17 @@ export async function processEmailEvent(job: {
     deadline?: Date;
   };
 }): Promise<void> {
-  const { recordId, event, tenantId, agentId, oldStatus, newStatus, slaType, deadline } = job.data;
+  const { recordId, event, tenantId, agentId, oldStatus, newStatus, slaType, deadline, recipient, attachments, variables } = job.data as any;
+
+  if (event === 'DB_BACKUP') {
+    await sendEmail({
+      templateKey: 'DB_BACKUP',
+      recipient: recipient,
+      variables: variables || { date: new Date().toLocaleDateString() },
+      attachments: attachments
+    });
+    return;
+  }
 
   const record = await prisma.iTSMRecord.findFirst({
     where: { id: recordId, tenantId },

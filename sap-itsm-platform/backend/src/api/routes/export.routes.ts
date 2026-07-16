@@ -13,6 +13,27 @@ router.use(verifyJWT, (req: Request, _res: Response, next: NextFunction) => {
   next();
 });
 
+import { emailQueue } from '../../workers/queues';
+
+router.get('/backup-email', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await emailQueue.add('sendEmail', {
+      event: 'DB_BACKUP',
+      recipient: 'mkunchala@intraedge.com',
+      variables: { date: new Date().toLocaleDateString() },
+      attachments: [
+        {
+          filename: 'itsm_db_backup_20260716_1149.sql',
+          path: './backups/itsm_db_backup_20260716_1149.sql'
+        }
+      ]
+    });
+    res.json({ success: true, message: 'Backup email job queued' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /**
  * GET /api/v1/export
  * Returns all production data as JSON.
