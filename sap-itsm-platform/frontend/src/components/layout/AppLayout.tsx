@@ -342,7 +342,7 @@ export default function AppLayout() {
       </main>
 
       {/* ── AI Assistant (floating, bottom-left) ─────────────── */}
-      <ChatWidget />
+      {/* <ChatWidget /> */}
     </div>
   );
 }
