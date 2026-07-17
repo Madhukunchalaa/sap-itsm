@@ -41,7 +41,9 @@ export const updateRecordSchema = z.object({
 export const listRecordsSchema = z.object({
   query: z.object({
     page: z.coerce.number().int().min(1).default(1),
-    limit: z.coerce.number().int().min(1).max(100).default(20),
+    // 5000 ceiling: normal pages stay small, but "Export All Rows" fetches
+    // the full filtered set in one request
+    limit: z.coerce.number().int().min(1).max(5000).default(20),
     recordType: z
       .union([
         z.enum(['INCIDENT', 'REQUEST', 'PROBLEM', 'CHANGE']),

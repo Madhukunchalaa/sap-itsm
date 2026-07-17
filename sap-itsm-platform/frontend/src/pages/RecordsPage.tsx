@@ -159,7 +159,8 @@ export default function RecordsPage() {
     if (exportLimit !== 'current') {
       const toastId = toast.loading(`Preparing export for ${exportLimit === 'all' ? 'all' : exportLimit} records...`);
       try {
-        const limit = exportLimit === 'all' ? data?.pagination.total || 10000 : parseInt(exportLimit);
+        // Backend caps list limit at 5000 — clamp so "All Rows" never 400s
+        const limit = Math.min(exportLimit === 'all' ? data?.pagination.total || 5000 : parseInt(exportLimit), 5000);
         const response = await recordsApi.list({
           ...filters,
           status:          selStatus.length   ? (selStatus as any)   : undefined,
