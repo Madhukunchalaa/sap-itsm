@@ -239,6 +239,33 @@ reportRouter.get('/resolution-times', async (req: Request, res: Response, next: 
   } catch (err) { next(err); }
 });
 
+// GET /reports/overall?period=week|month — full service-desk report
+//   SUPER_ADMIN=all, COMPANY_ADMIN=own company, PM=managed companies, AGENT=blocked
+reportRouter.get('/overall', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const role = req.user!.role, tenantId = req.user!.tenantId, userId = req.user!.sub;
+    if (role === 'AGENT') { res.status(403).json({ success: false, error: 'Access denied' }); return; }
+
+    const period = req.query.period === 'month' ? 'month' : 'week';
+    let customerIds: string[] | undefined;
+
+    if (role === 'COMPANY_ADMIN') {
+      if (!req.user!.customerId) { res.status(403).json({ success: false, error: 'Access denied' }); return; }
+      customerIds = [req.user!.customerId];
+    } else if (role === 'PROJECT_MANAGER') {
+      const agent = await resolveAgent(userId);
+      if (!agent) { res.status(403).json({ success: false, error: 'Access denied' }); return; }
+      const ids = await resolveManagedCustomerIds(agent.id, tenantId);
+      if (ids.length === 0) { res.status(403).json({ success: false, error: 'Access denied' }); return; }
+      customerIds = ids;
+    }
+
+    const { generateOverallReport } = await import('../../services/report.service');
+    const report = await generateOverallReport(tenantId, period, customerIds);
+    res.json({ success: true, report });
+  } catch (err) { next(err); }
+});
+
 export default holidayRouter;
 
 // ── EMAIL LOG ROUTES ──────────────────────────────────────────

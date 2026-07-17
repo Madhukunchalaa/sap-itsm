@@ -1,20 +1,32 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { listRecords, getRecord } from './record.service';
+import { listRecords, getRecord, createRecord, updateRecord, addComment } from './record.service';
 import { findSimilarTickets } from './rag.service';
+import { scoreAgents } from './assignment.service';
+import { processIntentMessage, resolveTicketId } from './intent.service';
 import { AppError } from '../utils/AppError';
 import { prisma } from '../config/database';
 import { getKnowledge } from './knowledge.service';
 import { logger } from '../config/logger';
 
 // ---------------------------------------------------------------------------
-// SAP ITSM AI Assistant — READ-ONLY chatbot + AI triage.
+// SAP ITSM AI Assistant — chatbot + AI triage.
 //
 // Provider is selectable via AI_PROVIDER:
 //   'gemini' (default) — free tier, uses GEMINI_API_KEY
 //   'claude'           — best quality, uses ANTHROPIC_API_KEY (paid)
 // The tools, prompts, and behavior are identical across providers; only the
-// LLM call differs. Nothing here ever writes to a ticket.
+// LLM call differs.
+//
+// Tool access is role-gated:
+//   - read tools + create_ticket + add_comment: any authenticated user
+//   - assign_ticket / update_ticket_status / set_priority / get_overall_report:
+//     staff only (SUPER_ADMIN, COMPANY_ADMIN, AGENT, PROJECT_MANAGER)
+// Every write goes through record.service, so audit log + notifications +
+// SLA handling behave exactly as if done in the UI.
+//
+// If no LLM is reachable (missing key, quota), chat degrades to the keyless
+// intent mode in intent.service.ts instead of failing.
 // ---------------------------------------------------------------------------
 const AI_PROVIDER = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
 const CLAUDE_MODEL = 'claude-opus-4-8';
@@ -80,6 +92,86 @@ const TOOL_DEFS = [
       required: ['query'],
     },
   },
+  // ---- Write tools (role rules enforced in runTool, not here) --------------
+  {
+    name: 'create_ticket',
+    description:
+      'Create a new ITSM ticket on behalf of the current user. Before calling, make sure you have ' +
+      'a clear title and description from the user; ask briefly if anything essential is missing.',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Short summary of the issue' },
+        description: { type: 'string', description: 'Detailed description of the issue' },
+        recordType: { type: 'string', enum: TYPE_ENUM, description: 'INCIDENT (something broken), REQUEST (service request), PROBLEM (recurring root cause), CHANGE (planned change)' },
+        priority: { type: 'string', enum: PRIORITY_ENUM, description: 'P1=critical/system down, P2=high, P3=medium (default), P4=low' },
+      },
+      required: ['title', 'description', 'recordType', 'priority'],
+    },
+  },
+  {
+    name: 'add_comment',
+    description: 'Add a public comment to a ticket as the current user.',
+    parameters: {
+      type: 'object',
+      properties: {
+        ticket: { type: 'string', description: 'Record number (e.g. INC-2026-000123) or UUID' },
+        text: { type: 'string', description: 'The comment text' },
+      },
+      required: ['ticket', 'text'],
+    },
+  },
+  {
+    name: 'assign_ticket',
+    description:
+      'STAFF ONLY. Assign a ticket to a support agent. If agentName is omitted, the best-matching agent ' +
+      'is chosen automatically based on module specialization, workload, and availability.',
+    parameters: {
+      type: 'object',
+      properties: {
+        ticket: { type: 'string', description: 'Record number or UUID' },
+        agentName: { type: 'string', description: 'Optional: first or last name of a specific agent to assign' },
+      },
+      required: ['ticket'],
+    },
+  },
+  {
+    name: 'update_ticket_status',
+    description: 'STAFF ONLY. Change the status of a ticket.',
+    parameters: {
+      type: 'object',
+      properties: {
+        ticket: { type: 'string', description: 'Record number or UUID' },
+        status: { type: 'string', enum: STATUS_ENUM, description: 'New status' },
+      },
+      required: ['ticket', 'status'],
+    },
+  },
+  {
+    name: 'set_priority',
+    description: 'STAFF ONLY. Change the priority of a ticket (P1=critical … P4=low).',
+    parameters: {
+      type: 'object',
+      properties: {
+        ticket: { type: 'string', description: 'Record number or UUID' },
+        priority: { type: 'string', enum: PRIORITY_ENUM, description: 'New priority' },
+      },
+      required: ['ticket', 'priority'],
+    },
+  },
+  {
+    name: 'get_overall_report',
+    description:
+      'STAFF ONLY. Generate the overall service-desk report: ticket volumes, SLA compliance, agent ' +
+      'performance, module hotspots, and trends vs the previous period. Use for "give me a report / ' +
+      'summary / how is the helpdesk doing" questions. Summarize the result conversationally.',
+    parameters: {
+      type: 'object',
+      properties: {
+        period: { type: 'string', enum: ['week', 'month'], description: 'Reporting period (default week)' },
+      },
+    },
+  },
 ];
 
 // ---- Tool executors (all read-only) ---------------------------------------
@@ -100,7 +192,11 @@ function summarizeTicket(r: any) {
   };
 }
 
-async function runTool(name: string, input: any, ctx: { tenantId: string; userId: string }) {
+const STAFF_ROLES = ['SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENT', 'PROJECT_MANAGER'];
+
+interface ToolCtx { tenantId: string; userId: string; isStaff: boolean }
+
+async function runTool(name: string, input: any, ctx: ToolCtx) {
   input = input || {};
   switch (name) {
     case 'list_tickets': {
@@ -147,13 +243,111 @@ async function runTool(name: string, input: any, ctx: { tenantId: string; userId
       }
       return sims.map((s) => ({ relevance: Number(s.similarity.toFixed(2)), details: s.content }));
     }
+    // ---- Write tools — every change goes through record.service, so audit
+    // ---- log, notifications, and SLA handling behave exactly like the UI.
+    case 'create_ticket': {
+      const rec: any = await createRecord({
+        recordType: (TYPE_ENUM.includes(input.recordType) ? input.recordType : 'INCIDENT') as any,
+        title: String(input.title || '').slice(0, 200),
+        description: String(input.description || input.title || ''),
+        priority: (PRIORITY_ENUM.includes(input.priority) ? input.priority : 'P3') as any,
+        tenantId: ctx.tenantId,
+        createdById: ctx.userId,
+      });
+      return { success: true, ticket: rec.recordNumber, title: rec.title, priority: rec.priority, status: rec.status };
+    }
+    case 'add_comment': {
+      const id = await resolveTicketId(String(input.ticket || ''), ctx.tenantId);
+      if (!id) return { error: `No ticket found matching "${input.ticket}".` };
+      await addComment(id, ctx.tenantId, ctx.userId, String(input.text || ''), false);
+      return { success: true, info: 'Comment added.' };
+    }
+    case 'assign_ticket': {
+      if (!ctx.isStaff) return { error: 'Permission denied: only agents and admins can assign tickets.' };
+      const id = await resolveTicketId(String(input.ticket || ''), ctx.tenantId);
+      if (!id) return { error: `No ticket found matching "${input.ticket}".` };
+      const rec = await prisma.iTSMRecord.findFirst({
+        where: { id, tenantId: ctx.tenantId },
+        select: { id: true, recordNumber: true, customerId: true, priority: true, sapModuleId: true, sapSubModuleId: true },
+      });
+      if (!rec) return { error: 'Ticket not found.' };
+
+      let targetAgentId: string | null = null;
+      let reason = '';
+      const requestedName = input.agentName ? String(input.agentName).trim() : '';
+
+      if (requestedName) {
+        const found = await prisma.agent.findFirst({
+          where: {
+            user: {
+              tenantId: ctx.tenantId,
+              OR: [
+                { firstName: { contains: requestedName, mode: 'insensitive' } },
+                { lastName: { contains: requestedName, mode: 'insensitive' } },
+              ],
+            },
+          },
+          include: { user: { select: { firstName: true, lastName: true } } },
+        });
+        if (!found) return { error: `No agent named "${requestedName}" found.` };
+        targetAgentId = found.id;
+        reason = `Assigned to ${found.user.firstName} ${found.user.lastName || ''}`.trim() + ' as requested';
+      } else if (rec.customerId) {
+        const scores = await scoreAgents({
+          tenantId: ctx.tenantId,
+          customerId: rec.customerId,
+          priority: rec.priority,
+          sapModuleId: rec.sapModuleId,
+          sapSubModuleId: rec.sapSubModuleId,
+        });
+        const best = scores.find((s) => s.status !== 'OFFLINE' && s.openTickets < s.maxConcurrent);
+        if (best) {
+          targetAgentId = best.agentId;
+          reason = `Best match: ${best.agentName} (${best.level}, ${best.openTickets}/${best.maxConcurrent} open tickets, score ${best.totalScore})`;
+        }
+      }
+
+      if (!targetAgentId) {
+        return { error: 'No suitable agent found — the ticket may have no customer, or all agents are at capacity. You can name a specific agent instead.' };
+      }
+      const updated: any = await updateRecord(rec.id, ctx.tenantId, ctx.userId, { assignedAgentId: targetAgentId });
+      return {
+        success: true,
+        ticket: rec.recordNumber,
+        assignedAgent: updated.assignedAgent?.user
+          ? `${updated.assignedAgent.user.firstName} ${updated.assignedAgent.user.lastName || ''}`.trim()
+          : null,
+        reason,
+      };
+    }
+    case 'update_ticket_status': {
+      if (!ctx.isStaff) return { error: 'Permission denied: only agents and admins can change ticket status.' };
+      if (!STATUS_ENUM.includes(input.status)) return { error: `Invalid status "${input.status}".` };
+      const id = await resolveTicketId(String(input.ticket || ''), ctx.tenantId);
+      if (!id) return { error: `No ticket found matching "${input.ticket}".` };
+      const updated: any = await updateRecord(id, ctx.tenantId, ctx.userId, { status: input.status });
+      return { success: true, ticket: updated.recordNumber, status: updated.status };
+    }
+    case 'set_priority': {
+      if (!ctx.isStaff) return { error: 'Permission denied: only agents and admins can change priority.' };
+      if (!PRIORITY_ENUM.includes(input.priority)) return { error: `Invalid priority "${input.priority}".` };
+      const id = await resolveTicketId(String(input.ticket || ''), ctx.tenantId);
+      if (!id) return { error: `No ticket found matching "${input.ticket}".` };
+      const updated: any = await updateRecord(id, ctx.tenantId, ctx.userId, { priority: input.priority });
+      return { success: true, ticket: updated.recordNumber, priority: updated.priority };
+    }
+    case 'get_overall_report': {
+      if (!ctx.isStaff) return { error: 'Permission denied: reports are available to agents and admins only.' };
+      const { generateOverallReport } = await import('./report.service');
+      return generateOverallReport(ctx.tenantId, input.period === 'month' ? 'month' : 'week');
+    }
     default:
       return { error: `Unknown tool: ${name}` };
   }
 }
 
 // ---- Shared context (system prompt with live knowledge snapshot) ----------
-async function buildSystemPrompt(tenantId: string, userName: string) {
+async function buildSystemPrompt(tenantId: string, userName: string, isStaff: boolean) {
   const knowledge = await getKnowledge(tenantId);
   const knowledgeContext = knowledge
     ? `
@@ -171,10 +365,14 @@ WHAT YOU CAN DO:
 - Answer questions about tickets by calling the read-only tools (list_tickets, get_ticket, list_agents).
 - ANALYZE tickets and PROPOSE SOLUTIONS. This is your core job: when asked for a solution, fix, or analysis of a ticket, call get_ticket first, then call find_similar_tickets with the problem description to check how similar past tickets were resolved, then give (1) the likely root cause, (2) concrete step-by-step resolution an SAP L2 engineer could follow — citing the past ticket (e.g. "as done in REQ-2026-0041") when a precedent matches, and (3) relevant SAP T-codes. Never refuse to suggest a solution — suggesting is always allowed.
 - Search resolution history: when the user describes any problem, use find_similar_tickets to surface how similar issues were solved before.
+- Create tickets (create_ticket) and add public comments (add_comment) on the user's behalf — confirm the details first.
+${isStaff
+  ? `- The current user is STAFF: you may also assign tickets (assign_ticket — auto-picks the best agent unless a name is given), change status (update_ticket_status), change priority (set_priority), and generate the overall service-desk report (get_overall_report).`
+  : `- The current user is an END USER: you must NOT assign tickets or change status/priority. If asked, politely explain that a support agent will handle it.`}
 - Help with general SAP and ITSM "how do I…" questions: T-codes, root causes, troubleshooting steps.
 
 RULES:
-- You cannot MODIFY anything in the system — no creating, editing, commenting, assigning, or closing tickets. If asked to perform a change, explain the user must do it in the app (e.g. via Edit or + New Ticket). This restriction applies ONLY to changing data. Giving advice, analysis, and solution proposals is always in scope and encouraged.
+- Write actions change real data. Only perform one when the user clearly asked for it, and confirm anything ambiguous (e.g. which ticket, which priority) before calling the tool. Report exactly what the tool did, including the ticket number.
 - Always use a tool to get live data — never guess ticket counts, statuses, or details. For "how many" questions, call list_tickets with the right filters and report the exact total.
 - Keep answers short and readable: use bold, bullet points, and spacing. No walls of text.
 - When the user describes an error or SAP issue, proactively offer 1-2 troubleshooting ideas or relevant T-codes.
@@ -185,7 +383,7 @@ ${knowledgeContext}`;
 // ===========================================================================
 // CLAUDE chat loop
 // ===========================================================================
-async function runClaudeChat(systemPrompt: string, priorMessages: Anthropic.MessageParam[], ctx: { tenantId: string; userId: string }) {
+async function runClaudeChat(systemPrompt: string, priorMessages: Anthropic.MessageParam[], ctx: ToolCtx) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey || apiKey === 'YOUR_CLAUDE_API_KEY_HERE') {
     throw new AppError('Anthropic API key is not configured. Set ANTHROPIC_API_KEY or switch AI_PROVIDER=gemini.', 500);
@@ -236,7 +434,7 @@ function toGeminiHistory(history: any[]) {
   return out;
 }
 
-async function runGeminiChat(systemPrompt: string, history: any[], message: string, ctx: { tenantId: string; userId: string }) {
+async function runGeminiChat(systemPrompt: string, history: any[], message: string, ctx: ToolCtx) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
     throw new AppError('Gemini API key is not configured. Add GEMINI_API_KEY to your .env file.', 500);
@@ -270,9 +468,19 @@ async function runGeminiChat(systemPrompt: string, history: any[], message: stri
 
 // ---- Main chat entry point -------------------------------------------------
 export async function processChatMessage(tenantId: string, userId: string, message: string, history: any[] = []) {
-  const userRecord = await prisma.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true } });
+  const userRecord = await prisma.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true, role: true } });
   const userName = userRecord ? `${userRecord.firstName} ${userRecord.lastName || ''}`.trim() : 'there';
-  const systemPrompt = await buildSystemPrompt(tenantId, userName);
+  const isStaff = STAFF_ROLES.includes(userRecord?.role || 'USER');
+
+  // No key configured for the active provider → keyless intent mode
+  const providerKey = AI_PROVIDER === 'claude' ? process.env.ANTHROPIC_API_KEY : process.env.GEMINI_API_KEY;
+  if (!providerKey || providerKey.startsWith('YOUR_')) {
+    logger.warn(`AI chat: no ${AI_PROVIDER} key configured — serving keyless intent mode`, { tenantId });
+    return processIntentMessage(tenantId, userId, message, history);
+  }
+
+  const systemPrompt = await buildSystemPrompt(tenantId, userName, isStaff);
+  const ctx: ToolCtx = { tenantId, userId, isStaff };
 
   try {
     let finalText: string;
@@ -284,9 +492,9 @@ export async function processChatMessage(tenantId: string, userId: string, messa
         } as Anthropic.MessageParam))
         .filter((m) => typeof m.content === 'string' && (m.content as string).trim() !== '');
       priorMessages.push({ role: 'user', content: message });
-      finalText = await runClaudeChat(systemPrompt, priorMessages, { tenantId, userId });
+      finalText = await runClaudeChat(systemPrompt, priorMessages, ctx);
     } else {
-      finalText = await runGeminiChat(systemPrompt, history, message, { tenantId, userId });
+      finalText = await runGeminiChat(systemPrompt, history, message, ctx);
     }
 
     if (!finalText) finalText = "I looked into that but couldn't put together a clear answer — could you rephrase?";
@@ -301,6 +509,17 @@ export async function processChatMessage(tenantId: string, userId: string, messa
     };
   } catch (error: any) {
     logger.error('AI chat error:', { provider: AI_PROVIDER, message: error.message, status: error.status });
+
+    // Quota / rate-limit → degrade to keyless basic mode instead of failing
+    const errMsg = String(error.message || '');
+    if (error.status === 429 || errMsg.includes('429') || /quota|rate.?limit|overloaded|resource.?exhausted/i.test(errMsg)) {
+      logger.warn('AI chat: LLM quota exhausted — serving keyless intent mode', { tenantId });
+      return processIntentMessage(
+        tenantId, userId, message, history,
+        '_(AI model temporarily unavailable — basic assistant mode)_\n\n'
+      );
+    }
+
     throw new AppError(`AI Service Error: ${error.message || 'Unknown error'}`, 500);
   }
 }

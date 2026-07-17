@@ -10,11 +10,13 @@ import { startEscalationWorker } from './workers/escalation.worker';
 import { seedDatabase } from './seed';
 import bcrypt from 'bcryptjs';
 import { initBackupJob } from './jobs/backup.job';
+import { initDigestJob } from './jobs/digest.job';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 // Initialize scheduled jobs
 initBackupJob();
+initDigestJob();
 
 // ── Full reset: wipe everything, create Intraedge + admin@intraedge.com ──
 async function resetAndReseed() {

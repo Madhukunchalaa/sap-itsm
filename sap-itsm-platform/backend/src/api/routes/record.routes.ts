@@ -417,6 +417,43 @@ router.patch('/:id/time-entry/:entryId',
 );
 
 // ─────────────────────────────────────────────────────────────
+// GET /records/:id/suggestions — deterministic AI triage (staff only).
+// Fresh computation: priority signals, likely SAP module, recommended
+// agents, similar resolved tickets. No LLM call — works without any API key.
+// ─────────────────────────────────────────────────────────────
+router.get('/:id/suggestions',
+  enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENT', 'PROJECT_MANAGER'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const record = await prisma.iTSMRecord.findFirst({
+        where: { id: req.params.id, tenantId: req.user!.tenantId },
+        select: {
+          id: true, tenantId: true, title: true, description: true, recordType: true,
+          priority: true, customerId: true, sapModuleId: true, sapSubModuleId: true,
+          assignedAgentId: true,
+        },
+      });
+      if (!record) { res.status(404).json({ success: false, error: 'Not found' }); return; }
+
+      const { buildTriageSuggestions } = await import('../../services/triage.service');
+      const suggestions = await buildTriageSuggestions({
+        tenantId: record.tenantId,
+        recordId: record.id,
+        title: record.title,
+        description: record.description,
+        recordType: record.recordType,
+        priority: record.priority,
+        customerId: record.customerId,
+        sapModuleId: record.sapModuleId,
+        sapSubModuleId: record.sapSubModuleId,
+        assignedAgentId: record.assignedAgentId,
+      });
+      res.json({ success: true, suggestions });
+    } catch (err) { next(err); }
+  }
+);
+
+// ─────────────────────────────────────────────────────────────
 // GET /records/:id/history (all roles can view, internal entries filtered in frontend)
 // ─────────────────────────────────────────────────────────────
 router.get('/:id/history',

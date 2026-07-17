@@ -17,12 +17,13 @@ interface AgentScore {
   status: string;
 }
 
-// Level priority mapping: P1→L4/L3 best, P4→L1/L2 best
+// Level priority mapping: P1→SPECIALIST/L3 best, P4→L1/L2 best
+// (AgentLevel enum: L1 | L2 | L3 | SPECIALIST — there is no L4)
 const LEVEL_PRIORITY_SCORES: Record<string, Record<string, number>> = {
-  P1: { L4: 25, L3: 20, L2: 10, L1: 5 },
-  P2: { L4: 20, L3: 25, L2: 15, L1: 5 },
-  P3: { L4: 5,  L3: 10, L2: 25, L1: 20 },
-  P4: { L4: 5,  L3: 5,  L2: 20, L1: 25 },
+  P1: { SPECIALIST: 25, L3: 20, L2: 10, L1: 5 },
+  P2: { SPECIALIST: 20, L3: 25, L2: 15, L1: 5 },
+  P3: { SPECIALIST: 5,  L3: 10, L2: 25, L1: 20 },
+  P4: { SPECIALIST: 5,  L3: 5,  L2: 20, L1: 25 },
 };
 
 export async function findMatchingRule(params: {
@@ -121,7 +122,7 @@ export async function scoreAgents(params: {
     if (preferredLevel) {
       // Explicit preferred level from rule
       levelScore = agent.level === preferredLevel ? 25 : (
-        Math.abs(['L1','L2','L3','L4'].indexOf(agent.level) - ['L1','L2','L3','L4'].indexOf(preferredLevel)) <= 1 ? 15 : 5
+        Math.abs(['L1','L2','L3','SPECIALIST'].indexOf(agent.level) - ['L1','L2','L3','SPECIALIST'].indexOf(preferredLevel)) <= 1 ? 15 : 5
       );
     } else {
       // Auto: use priority-based scoring

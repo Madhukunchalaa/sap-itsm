@@ -8,6 +8,7 @@ import { emailQueue } from '../workers/queues';
 import { slaQueue } from '../workers/queues';
 import { calculateSLADeadline, isSLAApplicable } from './sla.service';
 import { notify, notifyCommentDirect, notifyMentions, extractMentionNames, notifyPMOnUpdate } from './notifications/notification.service';
+import { runAutoTriage } from './triage.service';
 import { RecordStatus, RecordType, Priority, Prisma } from '@prisma/client';
 
 export interface CreateRecordInput {
@@ -259,6 +260,9 @@ export async function createRecord(input: CreateRecordInput) {
   if (slaTracking) {
     await slaQueue.add('sla-check', { recordId: record.id }, { delay: 60 * 1000 });
   }
+
+  // AI triage in background — suggestions comment + metadata (never blocks creation)
+  runAutoTriage(record as any).catch(err => console.error('[AITriage] Error:', err));
 
   return record;
 }
