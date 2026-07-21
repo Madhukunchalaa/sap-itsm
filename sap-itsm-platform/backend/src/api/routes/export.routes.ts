@@ -3,6 +3,7 @@ import { verifyJWT } from '../middleware/auth.middleware';
 import { prisma } from '../../config/database';
 import { AppError } from '../../utils/AppError';
 import { performDatabaseBackup } from '../../jobs/backup.job';
+import { triggerDailyStatusManually } from '../../jobs/dailyStatus.job';
 
 const router = Router();
 
@@ -16,10 +17,8 @@ router.get('/test-backup-job', (req: Request, res: Response, next: NextFunction)
 });
 
 router.get('/test-daily-status', (req: Request, res: Response, next: NextFunction) => {
-  import('../../jobs/dailyStatus.job').then(module => {
-    module.triggerDailyStatusManually().catch(err => {
-      console.error('Background daily status test failed:', err);
-    });
+  triggerDailyStatusManually().catch(err => {
+    console.error('Background daily status test failed:', err);
   });
   
   res.json({ success: true, message: 'Daily status email started in the background. Check your email shortly.' });
