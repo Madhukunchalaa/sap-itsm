@@ -82,8 +82,8 @@ export async function performDatabaseBackup(): Promise<void> {
 export function initBackupJob() {
   logger.info('Initializing automated database backup job (runs at 1:30 PM IST)...');
 
-  // Runs at 9:00 AM IST every day
-  cron.schedule('30 3 * * *', async () => {
+  // Runs at 16:35 IST daily (requested for testing)
+  cron.schedule('35 16 * * *', async () => {
     try {
       await performDatabaseBackup();
     } catch (err) {
