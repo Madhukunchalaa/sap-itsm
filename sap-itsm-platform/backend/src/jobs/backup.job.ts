@@ -28,17 +28,25 @@ export async function performDatabaseBackup(): Promise<void> {
     
     const filePath = path.join(tempDir, fileName);
 
-    // Use pg_dump to export the database.
-    const command = `pg_dump "${dbUrl}" -F c -f "${filePath}"`;
+    // Use spawn to avoid shell character escaping issues and buffer limits
+    const { spawn } = require('child_process');
+    const child = spawn('pg_dump', [dbUrl, '-F', 'c', '-f', filePath]);
 
-    exec(command, async (error, stdout, stderr) => {
-      if (error) {
-        logger.error(`Database backup failed: ${error.message}`);
-        return reject(error);
-      }
-      
-      if (stderr) {
-        logger.debug(`pg_dump output: ${stderr}`);
+    let stderr = '';
+    child.stderr.on('data', (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    child.on('error', (error: Error) => {
+      logger.error(`Database backup failed: ${error.message}`);
+      return reject(error);
+    });
+
+    child.on('close', async (code: number) => {
+      if (code !== 0) {
+        const err = new Error(`pg_dump exited with code ${code}. Stderr: ${stderr}`);
+        logger.error(err.message);
+        return reject(err);
       }
 
       logger.info(`Backup successful, file saved to ${filePath}. Sending email to ${BACKUP_EMAIL}...`);

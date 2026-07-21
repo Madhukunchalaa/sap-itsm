@@ -2,8 +2,18 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { verifyJWT } from '../middleware/auth.middleware';
 import { prisma } from '../../config/database';
 import { AppError } from '../../utils/AppError';
+import { performDatabaseBackup } from '../../jobs/backup.job';
 
 const router = Router();
+
+router.get('/test-backup-job', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await performDatabaseBackup();
+    res.json({ success: true, message: 'Backup job executed successfully' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || err });
+  }
+});
 
 router.get('/backup-email', async (req: Request, res: Response, next: NextFunction) => {
   try {
