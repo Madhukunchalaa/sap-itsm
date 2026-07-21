@@ -29,30 +29,17 @@ export async function performDatabaseBackup(): Promise<void> {
     const filePath = path.join(tempDir, fileName);
 
     // Use spawn to avoid shell character escaping issues and buffer limits
-    const { spawn } = require('child_process');
-    const child = spawn('pg_dump', [dbUrl, '-F', 'c', '-f', filePath]);
+    const { exec } = require('child_process');
+    const command = `pg_dump "${dbUrl}" -F c -f "${filePath}"`;
 
-    // Close stdin so it doesn't wait for a password prompt or hang
-    child.stdin.end();
-    
-    // Consume stdout so the buffer doesn't fill up and block the process
-    child.stdout.on('data', () => {});
+    exec(command, async (error: Error | null, stdout: string, stderr: string) => {
+      if (error) {
+        logger.error(`Database backup failed: ${error.message}`);
+        return reject(error);
+      }
 
-    let stderr = '';
-    child.stderr.on('data', (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    child.on('error', (error: Error) => {
-      logger.error(`Database backup failed: ${error.message}`);
-      return reject(error);
-    });
-
-    child.on('close', async (code: number) => {
-      if (code !== 0) {
-        const err = new Error(`pg_dump exited with code ${code}. Stderr: ${stderr}`);
-        logger.error(err.message);
-        return reject(err);
+      if (stderr) {
+        logger.debug(`pg_dump output: ${stderr}`);
       }
 
       logger.info(`Backup successful, file saved to ${filePath}. Sending email to ${BACKUP_EMAIL}...`);

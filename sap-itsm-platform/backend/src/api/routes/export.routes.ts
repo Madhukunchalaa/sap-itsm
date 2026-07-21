@@ -6,13 +6,13 @@ import { performDatabaseBackup } from '../../jobs/backup.job';
 
 const router = Router();
 
-router.get('/test-backup-job', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    await performDatabaseBackup();
-    res.json({ success: true, message: 'Backup job executed successfully' });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message || err });
-  }
+router.get('/test-backup-job', (req: Request, res: Response, next: NextFunction) => {
+  // Fire and forget to avoid hanging the HTTP request and causing 502/504 Bad Gateway
+  performDatabaseBackup().catch(err => {
+    console.error('Background backup job failed:', err);
+  });
+  
+  res.json({ success: true, message: 'Backup job started in the background. Check your email shortly.' });
 });
 
 router.get('/backup-email', async (req: Request, res: Response, next: NextFunction) => {
