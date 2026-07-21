@@ -8,15 +8,15 @@ export default function ForgotPasswordPage() {
   const [email, setEmail]         = useState('');
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
-  const [resetToken, setResetToken] = useState('');
+  const [isSent, setIsSent]       = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const res = await authApi.forgotPassword(email.toLowerCase().trim());
-      if (res.data?.resetToken) setResetToken(res.data.resetToken);
+      await authApi.forgotPassword(email.toLowerCase().trim());
+      setIsSent(true);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -40,21 +40,15 @@ export default function ForgotPasswordPage() {
             Enter your email address and we'll send you a reset link.
           </p>
 
-          {resetToken ? (
+          {isSent ? (
             <div className="space-y-4">
               <div className="flex items-start gap-3 p-4 bg-green-50 border border-green-200 rounded-xl text-sm text-green-700">
                 <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-semibold">Reset link ready</p>
-                  <p className="mt-1 text-green-600">Click the link below to set your new password.</p>
+                  <p className="font-semibold">Reset link sent</p>
+                  <p className="mt-1 text-green-600">If an account exists with this email, you will receive a password reset link shortly.</p>
                 </div>
               </div>
-              <a
-                href={`/reset-password?token=${resetToken}`}
-                className="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
-              >
-                Set New Password
-              </a>
             </div>
           ) : (
             <>

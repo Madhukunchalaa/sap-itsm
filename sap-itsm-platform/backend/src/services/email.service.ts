@@ -150,8 +150,8 @@ const TEMPLATES: Record<string, { subject: string; html: string }> = {
   },
 };
 
-export async function sendPasswordResetEmail(email: string, name: string, token: string): Promise<void> {
-  const portalUrl = process.env.PORTAL_URL || 'http://localhost:3000';
+export async function sendPasswordResetEmail(email: string, name: string, token: string, origin?: string): Promise<void> {
+  const portalUrl = origin || process.env.PORTAL_URL || 'http://localhost:3000';
   const resetUrl = `${portalUrl}/reset-password?token=${token}`;
   const template = TEMPLATES.PASSWORD_RESET;
   const vars = { name, resetUrl, portalUrl };

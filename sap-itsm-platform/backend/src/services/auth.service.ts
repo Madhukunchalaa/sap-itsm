@@ -240,7 +240,7 @@ export async function changePassword(
   });
 }
 
-export async function forgotPassword(email: string): Promise<{ resetToken?: string }> {
+export async function forgotPassword(email: string, origin?: string): Promise<{ resetToken?: string }> {
   const user = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
   // Always return success to avoid email enumeration
   if (!user || user.status !== 'ACTIVE') return {};
@@ -253,8 +253,10 @@ export async function forgotPassword(email: string): Promise<{ resetToken?: stri
     data: { passwordResetToken: token, passwordResetExpiry: expiry },
   });
 
-  // Email sending disabled — token returned directly in response
-  return { resetToken: token };
+  const { sendPasswordResetEmail } = await import('./email.service');
+  await sendPasswordResetEmail(user.email, user.firstName, token, origin);
+
+  return {};
 }
 
 export async function resetPassword(token: string, newPassword: string): Promise<void> {

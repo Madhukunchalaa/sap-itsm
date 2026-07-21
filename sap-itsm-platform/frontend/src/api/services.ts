@@ -17,7 +17,7 @@ export const authApi = {
     apiClient.post('/auth/change-password', { currentPassword, newPassword }),
 
   forgotPassword: (email: string) =>
-    apiClient.post('/auth/forgot-password', { email }),
+    apiClient.post('/auth/forgot-password', { email, origin: window.location.origin }),
 
   resetPassword: (token: string, newPassword: string) =>
     apiClient.post('/auth/reset-password', { token, newPassword }),

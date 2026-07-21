@@ -172,7 +172,7 @@ router.get('/debug-scope', verifyJWT, enforceTenantScope, async (req: Request, r
 // POST /auth/forgot-password
 router.post('/forgot-password', validate(forgotPasswordSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await forgotPassword(req.body.email);
+    const result = await forgotPassword(req.body.email, req.body.origin);
     res.json({ success: true, message: 'If that email exists, a reset link has been sent.', ...result });
   } catch (err) {
     next(err);
