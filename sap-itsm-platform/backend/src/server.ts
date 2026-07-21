@@ -11,12 +11,14 @@ import { seedDatabase } from './seed';
 import bcrypt from 'bcryptjs';
 import { initBackupJob } from './jobs/backup.job';
 import { initDigestJob } from './jobs/digest.job';
+import { initDailyStatusJob } from './jobs/dailyStatus.job';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 // Initialize scheduled jobs
 initBackupJob();
 initDigestJob();
+initDailyStatusJob();
 
 // ── Full reset: wipe everything, create Intraedge + admin@intraedge.com ──
 async function resetAndReseed() {

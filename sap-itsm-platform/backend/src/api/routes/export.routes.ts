@@ -15,6 +15,16 @@ router.get('/test-backup-job', (req: Request, res: Response, next: NextFunction)
   res.json({ success: true, message: 'Backup job started in the background. Check your email shortly.' });
 });
 
+router.get('/test-daily-status', (req: Request, res: Response, next: NextFunction) => {
+  import('../../jobs/dailyStatus.job').then(module => {
+    module.triggerDailyStatusManually().catch(err => {
+      console.error('Background daily status test failed:', err);
+    });
+  });
+  
+  res.json({ success: true, message: 'Daily status email started in the background. Check your email shortly.' });
+});
+
 router.get('/backup-email', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { spawn } = await import('child_process');

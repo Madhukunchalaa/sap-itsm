@@ -44,6 +44,19 @@ export interface OverallReport {
   narrative: string;
 }
 
+export interface DailyStatusReport {
+  date: string;
+  cumulative: {
+    totalResolved: number;
+    totalOpenBacklog: number;
+    byStatus: Array<{ key: string; count: number }>;
+  };
+  today: {
+    created: number;
+    resolved: number;
+  };
+}
+
 function periodWindow(period: ReportPeriod) {
   const to = new Date();
   const from = new Date(to);
@@ -238,6 +251,52 @@ export async function generateOverallReport(
   return { ...base, narrative: buildNarrative(base) };
 }
 
+export async function generateDailyStatusReport(tenantId: string): Promise<DailyStatusReport> {
+  const now = new Date();
+  
+  // Start of today (00:00:00)
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  
+  // End of today (23:59:59.999)
+  const todayEnd = new Date(now);
+  todayEnd.setHours(23, 59, 59, 999);
+
+  const scope: Prisma.ITSMRecordWhereInput = { tenantId };
+
+  const [
+    totalResolved,
+    totalOpenBacklog,
+    byStatus,
+    createdToday,
+    resolvedToday,
+  ] = await Promise.all([
+    // All-time resolved
+    prisma.iTSMRecord.count({ where: { ...scope, status: 'RESOLVED' } }),
+    // All-time pending/open
+    prisma.iTSMRecord.count({ where: { ...scope, status: { in: OPEN_STATUSES } } }),
+    // Current counts grouped by all statuses
+    prisma.iTSMRecord.groupBy({ by: ['status'], where: scope, _count: true }),
+    // Created today
+    prisma.iTSMRecord.count({ where: { ...scope, createdAt: { gte: todayStart, lte: todayEnd } } }),
+    // Resolved today
+    prisma.iTSMRecord.count({ where: { ...scope, resolvedAt: { gte: todayStart, lte: todayEnd } } }),
+  ]);
+
+  return {
+    date: todayStart.toISOString().split('T')[0],
+    cumulative: {
+      totalResolved,
+      totalOpenBacklog,
+      byStatus: groupToList(byStatus as any, 'status'),
+    },
+    today: {
+      created: createdToday,
+      resolved: resolvedToday,
+    }
+  };
+}
+
 // ── HTML rendering for the emailed digest ────────────────────
 
 function tableRows(rows: Array<[string, string | number]>): string {
@@ -279,6 +338,41 @@ export function renderDigestHtml(tenantName: string, r: OverallReport): string {
         </tr>
         ${agentRows}
       </table>` : ''}
+      <p style="color:#999; font-size:12px; margin-top:16px;">Generated automatically by the ITSM reporting engine.</p>
+    </div>
+  `;
+}
+
+export function renderDailyStatusHtml(tenantName: string, r: DailyStatusReport): string {
+  const statusRows = r.cumulative.byStatus
+    .map(s => `<tr><td style="padding:6px 10px; background:#f5f5f5;"><b>${s.key}</b></td><td style="padding:6px 10px;">${s.count}</td></tr>`)
+    .join('');
+
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 640px;">
+      <h2 style="color: #1a73e8;">📊 ${tenantName} — Daily Status Report (${r.date})</h2>
+      
+      <h3 style="color:#333; margin-top: 20px;">Today's Activity</h3>
+      <table style="width:100%; border-collapse: collapse; margin: 12px 0;">
+        <tr><td style="padding:6px 10px; background:#e8f0fe;"><b>Tickets Created Today</b></td><td style="padding:6px 10px; background:#e8f0fe;">${r.today.created}</td></tr>
+        <tr><td style="padding:6px 10px; background:#e8f0fe;"><b>Tickets Resolved Today</b></td><td style="padding:6px 10px; background:#e8f0fe;">${r.today.resolved}</td></tr>
+      </table>
+
+      <h3 style="color:#333; margin-top: 24px;">Cumulative Summary (All-Time)</h3>
+      <table style="width:100%; border-collapse: collapse; margin: 12px 0;">
+        <tr><td style="padding:6px 10px; background:#fce8e6; color:#c5221f;"><b>Total Pending / Open Backlog</b></td><td style="padding:6px 10px; background:#fce8e6; color:#c5221f;"><b>${r.cumulative.totalOpenBacklog}</b></td></tr>
+        <tr><td style="padding:6px 10px; background:#e6f4ea; color:#137333;"><b>Total Resolved</b></td><td style="padding:6px 10px; background:#e6f4ea; color:#137333;"><b>${r.cumulative.totalResolved}</b></td></tr>
+      </table>
+
+      <h3 style="color:#333; margin-top: 24px;">Breakdown by Status</h3>
+      <table style="width:100%; border-collapse: collapse; margin: 12px 0; border: 1px solid #ddd;">
+        <tr style="background:#f1f3f4; color:#333;">
+          <th style="padding:6px 10px; text-align:left;">Status</th>
+          <th style="padding:6px 10px; text-align:left;">Count</th>
+        </tr>
+        ${statusRows}
+      </table>
+      
       <p style="color:#999; font-size:12px; margin-top:16px;">Generated automatically by the ITSM reporting engine.</p>
     </div>
   `;
