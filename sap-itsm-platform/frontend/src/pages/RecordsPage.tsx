@@ -376,7 +376,8 @@ export default function RecordsPage() {
               </button>
             </div>
             <Button onClick={() => {
-              if (user?.role === 'USER' && (resolvedCount || 0) >= 15) {
+              const isDrillmec = user?.customer?.companyName?.toLowerCase().includes('drillmec');
+              if (user?.role === 'USER' && !isDrillmec && (resolvedCount || 0) >= 15) {
                 setRestrictionModalOpen(true);
               } else {
                 navigate('/records/new');

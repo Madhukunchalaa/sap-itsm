@@ -233,7 +233,8 @@ export default function AppLayout() {
         <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
           <button
             onClick={() => {
-              if (user?.role === 'USER' && (resolvedCount || 0) >= 15) {
+              const isDrillmec = user?.customer?.companyName?.toLowerCase().includes('drillmec');
+              if (user?.role === 'USER' && !isDrillmec && (resolvedCount || 0) >= 15) {
                 setRestrictionModalOpen(true);
               } else {
                 navigate('/records/new');
