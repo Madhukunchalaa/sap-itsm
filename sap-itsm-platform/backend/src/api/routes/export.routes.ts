@@ -31,6 +31,7 @@ router.get('/backup-email', async (req: Request, res: Response, next: NextFuncti
     res.setHeader('Content-Type', 'application/octet-stream');
 
     const child = spawn('pg_dump', [dbUrl, '-F', 'c']);
+    child.stdin.end();
 
     child.stdout.pipe(res);
 

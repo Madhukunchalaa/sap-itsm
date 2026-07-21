@@ -32,6 +32,12 @@ export async function performDatabaseBackup(): Promise<void> {
     const { spawn } = require('child_process');
     const child = spawn('pg_dump', [dbUrl, '-F', 'c', '-f', filePath]);
 
+    // Close stdin so it doesn't wait for a password prompt or hang
+    child.stdin.end();
+    
+    // Consume stdout so the buffer doesn't fill up and block the process
+    child.stdout.on('data', () => {});
+
     let stderr = '';
     child.stderr.on('data', (data: Buffer) => {
       stderr += data.toString();
