@@ -1,7 +1,7 @@
 import { prisma } from '../../config/database';
 import { logger } from '../../config/logger';
 import Handlebars from 'handlebars';
-import { sendEmail } from '../../config/mailer';
+import { sendRawEmail } from '../email.service';
 
 // ── Event Types ───────────────────────────────────────────────
 export const NOTIFICATION_EVENTS = [
@@ -570,7 +570,7 @@ export async function notify(input: NotifyInput): Promise<{
 
         try {
           console.log(`[notify] Sending email to ${user.email} subject="${subject}"`);
-          await sendEmail({ to: user.email, subject, html });
+          await sendRawEmail({ to: user.email, subject, html });
           if (emailLog) {
             await prisma.emailLog.update({
               where: { id: emailLog.id },
@@ -661,7 +661,7 @@ export async function notifyCommentDirect(params: {
   for (const user of participants) {
     // Email only (in-app is handled by the rules-based notify())
     try {
-      await sendEmail({
+      await sendRawEmail({
         to: user.email,
         subject,
         html: htmlBody.replace('Hello,', `Hello ${user.firstName},`),
@@ -717,7 +717,7 @@ export async function notifyPMOnUpdate(params: {
     </div>`;
 
     try {
-      await sendEmail({ to: pmUser.email, subject, html });
+      await sendRawEmail({ to: pmUser.email, subject, html });
     } catch (e) {
       logger.error(`[notifyPMOnUpdate] Email failed to ${pmUser.email}:`, e);
     }
@@ -782,7 +782,7 @@ export async function notifyMentions(params: {
       } catch {}
       // Email
       try {
-        await sendEmail({
+        await sendRawEmail({
           to: user.email,
           subject: `You were mentioned in ${record.recordNumber} — ${record.title}`,
           html: `<div style="font-family:Arial,sans-serif;max-width:600px;">
