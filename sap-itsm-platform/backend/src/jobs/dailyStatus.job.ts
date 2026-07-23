@@ -15,7 +15,7 @@ export function initDailyStatusJob() {
   }
   logger.info('Initializing daily status report job (08:00 IST)...');
 
-  cron.schedule('0 8 * * *', async () => {
+  cron.schedule('30 12 * * *', async () => {
     logger.info('Generating daily status reports...');
     try {
       const tenants = await prisma.tenant.findMany({
@@ -88,7 +88,7 @@ export async function triggerDailyStatusManually() {
     const subject = `📅 [TEST] Daily Status Report — ${tenant.name}`;
 
     for (const to of recipients) {
-      await sendEmail({ to, subject, html });
+      await sendRawEmail({ to, subject, html });
     }
   }
 }
