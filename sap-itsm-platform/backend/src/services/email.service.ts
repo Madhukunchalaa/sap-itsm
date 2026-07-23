@@ -232,6 +232,30 @@ export async function sendEmail(params: SendEmailParams): Promise<void> {
   }
 }
 
+export async function sendRawEmail(options: {
+  to: string;
+  subject: string;
+  html: string;
+  attachments?: { filename: string; path: string; contentType?: string }[];
+}): Promise<void> {
+  const fromName = process.env.SMTP_FROM_NAME || 'Service Desk Intraedge';
+  const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'noreply@example.com';
+  
+  try {
+    await getTransporter().sendMail({
+      from: `"${fromName}" <${fromEmail}>`,
+      to: options.to,
+      subject: options.subject,
+      html: options.html,
+      attachments: options.attachments,
+    });
+    logger.info(`Raw email sent to ${options.to}`);
+  } catch (err: any) {
+    logger.error(`Failed to send raw email to ${options.to}:`, err);
+    throw err;
+  }
+}
+
 /**
  * Process an email event job - fetch record data and send.
  */

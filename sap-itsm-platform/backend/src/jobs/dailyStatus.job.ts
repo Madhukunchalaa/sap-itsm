@@ -1,16 +1,16 @@
 import cron from 'node-cron';
 import { prisma } from '../config/database';
 import { logger } from '../config/logger';
-import { sendEmail } from '../config/mailer';
+import { sendRawEmail } from '../services/email.service';
 import { generateDailyStatusReport, renderDailyStatusHtml } from '../services/report.service';
 
 /**
- * Daily Status Digest — runs every day at 08:00 IST.
- * For each active tenant, generates the daily status report and emails it.
+ * Daily Status email job — every day at 08:00 IST.
+ * Generates and emails the overall ticket status to SUPER_ADMIN users (and DIGEST_EMAILS).
  */
 export function initDailyStatusJob() {
-  if (process.env.DIGEST_ENABLED === 'false') {
-    logger.info('Daily status job disabled via DIGEST_ENABLED=false');
+  if (process.env.DAILY_STATUS_ENABLED === 'false') {
+    logger.info('Daily status report job disabled via DAILY_STATUS_ENABLED=false');
     return;
   }
   logger.info('Initializing daily status report job (08:00 IST)...');
@@ -44,18 +44,18 @@ export function initDailyStatusJob() {
 
           for (const to of recipients) {
             try {
-              await sendEmail({ to, subject, html });
+              await sendRawEmail({ to, subject, html });
             } catch (err) {
               logger.error(`[DailyStatus] Failed to send to ${to}:`, err);
             }
           }
-          logger.info(`[DailyStatus] Sent report for ${tenant.name} to ${recipients.length} recipient(s)`);
+          logger.info(`[DailyStatus] Sent daily status report for ${tenant.name} to ${recipients.length} recipient(s)`);
         } catch (err) {
           logger.error(`[DailyStatus] Failed for tenant ${tenant.name}:`, err);
         }
       }
     } catch (err) {
-      logger.error('[DailyStatus] Daily status run failed:', err);
+      logger.error('[DailyStatus] Job run failed:', err);
     }
   }, {
     timezone: 'Asia/Kolkata',
