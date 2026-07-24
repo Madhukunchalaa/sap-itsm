@@ -262,7 +262,8 @@ export async function createRecord(input: CreateRecordInput) {
   }
 
   // AI triage in background — suggestions comment + metadata (never blocks creation)
-  runAutoTriage(record as any).catch(err => console.error('[AITriage] Error:', err));
+  // Disable automatic triage comment per user request
+  // runAutoTriage(record as any).catch(err => console.error('[AITriage] Error:', err));
 
   return record;
 }
