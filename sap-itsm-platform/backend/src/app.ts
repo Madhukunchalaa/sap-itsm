@@ -28,6 +28,7 @@ import sapModuleRoutes from './api/routes/sapModule.routes';
 import assignmentRuleRoutes from './api/routes/assignmentRule.routes';
 import exportRoutes from './api/routes/export.routes';
 import chatRoutes from './api/routes/chat.routes';
+import plantHeadEmailRoutes from './api/routes/plantHeadEmail.routes';
 
 const app = express();
 
@@ -113,6 +114,7 @@ app.use('/notifications/inbox', notificationInboxRoutes);
 app.use('/sap-modules', sapModuleRoutes);
 app.use('/assignment-rules', assignmentRuleRoutes);
 app.use('/export', exportRoutes);
+app.use('/plant-head-emails', plantHeadEmailRoutes);
 
 // Standard Prefixed Routes
 app.use(`${API}/auth`, authRoutes);
@@ -135,6 +137,7 @@ app.use(`${API}/sap-modules`, sapModuleRoutes);
 app.use(`${API}/assignment-rules`, assignmentRuleRoutes);
 app.use(`${API}/export`, exportRoutes);
 app.use(`${API}/chat`, chatRoutes);
+app.use(`${API}/plant-head-emails`, plantHeadEmailRoutes);
 
 
 // ── Admin Endpoints (before error handlers!) ──────────────────

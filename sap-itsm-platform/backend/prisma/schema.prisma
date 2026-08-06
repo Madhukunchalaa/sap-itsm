@@ -26,6 +26,7 @@ model Tenant {
   records            ITSMRecord[]
   notificationRules  NotificationRule[]
   notifications      Notification[]
+  plantHeadEmails    PlantHeadEmail[]
   sapModules         SAPModuleMaster[]
   sapSubModules      SAPSubModuleMaster[]
   shifts             Shift[]
@@ -443,6 +444,8 @@ model ITSMRecord {
   sapModuleId     String?             @map("sap_module_id")
   sapSubModuleId  String?             @map("sap_sub_module_id")
   metadata        Json?               @default("{}")
+  targetDate      DateTime?           @map("target_date")
+  revisedTargetDate DateTime?         @map("revised_target_date")
   resolvedAt      DateTime?           @map("resolved_at")
   closedAt        DateTime?           @map("closed_at")
   respondedAt     DateTime?           @map("responded_at")
@@ -474,6 +477,24 @@ model ITSMRecord {
   @@index([assignedAgentId])
   @@index([customerId])
   @@map("itsm_records")
+}
+
+// Plant → head-email configuration used by the daily plant status digest.
+model PlantHeadEmail {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  plant     String
+  email     String
+  name      String?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, plant, email])
+  @@index([tenantId])
+  @@index([plant])
+  @@map("plant_head_emails")
 }
 
 // RAG: one embedding per resolved/closed ticket, used for semantic
@@ -812,6 +833,10 @@ enum RecordStatus {
   PENDING
   AWAITING_CUSTOMER
   WITH_SAP
+  IN_UAT
+  HOLD
+  MOVED_TO_QUALITY
+  MOVED_TO_PRODUCTION
   RESOLVED
   CLOSED
   CANCELLED

@@ -27,6 +27,7 @@ const HolidaysPage       = lazy(() => import('./pages/HolidaysPage'));
 const NotificationsPage  = lazy(() => import('./pages/NotificationsPage'));
 const SAPModulesPage     = lazy(() => import('./pages/SAPModulesPage'));
 const AssignmentRulesPage = lazy(() => import('./pages/AssignmentRulesPage'));
+const PlantHeadEmailsPage = lazy(() => import('./pages/PlantHeadEmailsPage'));
 const AppLayout          = lazy(() => import('./components/layout/AppLayout'));
 
 // Customers — list + form + detail
@@ -192,6 +193,11 @@ export default function App() {
                 <Route path="/notifications" element={
                   <ProtectedRoute roles={['SUPER_ADMIN', 'COMPANY_ADMIN']}>
                     <NotificationsPage />
+                  </ProtectedRoute>
+                } />
+                <Route path="/plant-notifications" element={
+                  <ProtectedRoute roles={['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER']}>
+                    <PlantHeadEmailsPage />
                   </ProtectedRoute>
                 } />
                 <Route path="/sap-modules" element={

@@ -29,13 +29,14 @@ import { logger } from '../config/logger';
 // intent mode in intent.service.ts instead of failing.
 // ---------------------------------------------------------------------------
 const AI_PROVIDER = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
-const CLAUDE_MODEL = 'claude-opus-4-8';
+const CLAUDE_MODEL = 'claude-sonnet-5';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const MAX_TOOL_ROUNDS = 4;
 
 const STATUS_ENUM = [
   'NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'AWAITING_CUSTOMER',
-  'WITH_SAP', 'REOPEN', 'RESOLVED', 'CLOSED', 'CANCELLED',
+  'WITH_SAP', 'IN_UAT', 'HOLD', 'MOVED_TO_QUALITY', 'MOVED_TO_PRODUCTION',
+  'REOPEN', 'RESOLVED', 'CLOSED', 'CANCELLED',
 ];
 const PRIORITY_ENUM = ['P1', 'P2', 'P3', 'P4'];
 const TYPE_ENUM = ['INCIDENT', 'REQUEST', 'PROBLEM', 'CHANGE'];

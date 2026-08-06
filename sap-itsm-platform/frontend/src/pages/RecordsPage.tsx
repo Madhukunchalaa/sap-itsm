@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Filter, Plus, X, Download } from 'lucide-react';
+import { Search, Filter, Plus, X, Download, SlidersHorizontal } from 'lucide-react';
 import { useRecords, useSapModules, useAgents, useUsers, useCustomers } from '../hooks/useApi';
 import { DataTable, Column } from '../components/ui/DataTable';
 import { PriorityBadge, StatusBadge, TypeBadge, SLABadge } from '../components/ui/Badges';
@@ -8,7 +8,7 @@ import { useResolvedTicketCount } from '../hooks/useApi';
 import { RestrictionModal } from '../components/records/RestrictionModal';
 import { PageHeader, Button } from '../components/ui/Forms';
 import { MultiSelectDropdown, MultiSelectOption } from '../components/ui/MultiSelectDropdown';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import { recordsApi, RecordFilters } from '../api/services';
 import { useAuthStore } from '../store/auth.store';
 import { useRecordFilterStore } from '../store/record-filter.store';
@@ -23,6 +23,10 @@ const STATUS_OPTIONS: MultiSelectOption[] = [
   { value: 'PENDING',           label: 'Pending' },
   { value: 'AWAITING_CUSTOMER', label: 'Awaiting Customer' },
   { value: 'WITH_SAP',          label: 'With SAP' },
+  { value: 'IN_UAT',            label: 'In UAT' },
+  { value: 'HOLD',              label: 'Hold' },
+  { value: 'MOVED_TO_QUALITY',  label: 'Moved to Quality' },
+  { value: 'MOVED_TO_PRODUCTION', label: 'Moved to Production' },
   { value: 'RESOLVED',          label: 'Resolved' },
   { value: 'CLOSED',            label: 'Closed' },
   { value: 'CANCELLED',         label: 'Cancelled' },
@@ -35,6 +39,10 @@ const STATUS_COLORS: Record<string, string> = {
   PENDING:           'bg-amber-500 border-amber-500',
   AWAITING_CUSTOMER: 'bg-orange-500 border-orange-500',
   WITH_SAP:          'bg-cyan-600 border-cyan-600',
+  IN_UAT:            'bg-teal-600 border-teal-600',
+  HOLD:              'bg-pink-600 border-pink-600',
+  MOVED_TO_QUALITY:  'bg-sky-600 border-sky-600',
+  MOVED_TO_PRODUCTION: 'bg-lime-600 border-lime-600',
   RESOLVED:          'bg-green-600 border-green-600',
   CLOSED:            'bg-gray-500 border-gray-500',
   CANCELLED:         'bg-red-500 border-red-500',
@@ -77,11 +85,51 @@ const EXPORT_LIMIT_OPTIONS = [
   { value: 'all',     label: 'All Rows' },
 ];
 
+// ── Column visibility (per-user, persisted in localStorage) ───
+const COLUMN_STORAGE_KEY = 'records-visible-columns-v1';
+// Record # and Title are always shown and not toggleable.
+const TOGGLEABLE_COLUMNS = [
+  { key: 'type',              label: 'Type' },
+  { key: 'priority',          label: 'Priority' },
+  { key: 'status',            label: 'Status' },
+  { key: 'sla',               label: 'SLA' },
+  { key: 'plant',             label: 'Plant' },
+  { key: 'customer',          label: 'Client' },
+  { key: 'sapModule',         label: 'Module' },
+  { key: 'targetDate',        label: 'Target Date' },
+  { key: 'revisedTargetDate', label: 'Revised Target Date' },
+  { key: 'assignedAgent',     label: 'Assigned' },
+  { key: 'createdAt',         label: 'Created' },
+];
+// Shown by default; the two new date columns are opt-in.
+const DEFAULT_VISIBLE_COLUMNS = TOGGLEABLE_COLUMNS
+  .map(c => c.key)
+  .filter(k => k !== 'targetDate' && k !== 'revisedTargetDate');
+
+function loadVisibleColumns(): string[] {
+  try {
+    const saved = localStorage.getItem(COLUMN_STORAGE_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch {}
+  return DEFAULT_VISIBLE_COLUMNS;
+}
+
 // ── Component ────────────────────────────────────────────────
 export default function RecordsPage() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const canSeeModuleColumn = user?.role === 'SUPER_ADMIN' || user?.role === 'PROJECT_MANAGER';
+
+  const [showColumnsPanel, setShowColumnsPanel] = React.useState(false);
+  const [visibleColKeys, setVisibleColKeys] = React.useState<string[]>(loadVisibleColumns);
+
+  const toggleColumn = (key: string) => {
+    setVisibleColKeys(prev => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
+      try { localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
 
   const { data: sapModulesRaw = [] } = useSapModules();
   const moduleOptions: MultiSelectOption[] = sapModulesRaw.map((m: any) => ({
@@ -231,56 +279,54 @@ export default function RecordsPage() {
   };
 
   // ── Columns ─────────────────────────────────────────────────
-  const baseColumns: Column<any>[] = [
-    {
-      key: 'recordNumber',
-      header: 'Record #',
-      render: (row) => <span className="font-mono text-xs text-gray-500">{row.recordNumber}</span>,
-      className: 'w-36',
-    },
-    {
-      key: 'type',
-      header: 'Type',
-      render: (row) => <TypeBadge type={row.recordType} />,
-      className: 'w-28',
-    },
-    {
-      key: 'title',
-      header: 'Title',
-      render: (row) => (
-        <div>
-          <p className="font-medium text-gray-900 line-clamp-1">{row.title}</p>
-          {row.customer && <p className="text-xs text-gray-400">{row.customer.companyName}</p>}
-        </div>
-      ),
-    },
-    {
-      key: 'priority',
-      header: 'Priority',
-      render: (row) => <PriorityBadge priority={row.priority} short />,
-      className: 'w-24',
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      render: (row) => <StatusBadge status={row.status} />,
-      className: 'w-36',
-    },
-    {
-      key: 'sla',
-      header: 'SLA',
-      render: (row) => row.slaTracking ? (
-        <SLABadge
-          breachResponse={row.slaTracking.breachResponse}
-          breachResolution={row.slaTracking.breachResolution}
-          resolutionDeadline={row.slaTracking.resolutionDeadline}
-          compact
-        />
-      ) : <span className="text-xs text-gray-300">—</span>,
-      className: 'w-32',
-    },
-  ];
-
+  // Record # and Title are always shown; the rest are toggled via visibleColKeys.
+  const recordNumberColumn: Column<any> = {
+    key: 'recordNumber',
+    header: 'Record #',
+    render: (row) => <span className="font-mono text-xs text-gray-500">{row.recordNumber}</span>,
+    className: 'w-36',
+  };
+  const titleColumn: Column<any> = {
+    key: 'title',
+    header: 'Title',
+    render: (row) => (
+      <div>
+        <p className="font-medium text-gray-900 line-clamp-1">{row.title}</p>
+        {row.customer && <p className="text-xs text-gray-400">{row.customer.companyName}</p>}
+      </div>
+    ),
+  };
+  const typeColumn: Column<any> = {
+    key: 'type',
+    header: 'Type',
+    render: (row) => <TypeBadge type={row.recordType} />,
+    className: 'w-28',
+  };
+  const priorityColumn: Column<any> = {
+    key: 'priority',
+    header: 'Priority',
+    render: (row) => <PriorityBadge priority={row.priority} short />,
+    className: 'w-24',
+  };
+  const statusColumn: Column<any> = {
+    key: 'status',
+    header: 'Status',
+    render: (row) => <StatusBadge status={row.status} />,
+    className: 'w-36',
+  };
+  const slaColumn: Column<any> = {
+    key: 'sla',
+    header: 'SLA',
+    render: (row) => row.slaTracking ? (
+      <SLABadge
+        breachResponse={row.slaTracking.breachResponse}
+        breachResolution={row.slaTracking.breachResolution}
+        resolutionDeadline={row.slaTracking.resolutionDeadline}
+        compact
+      />
+    ) : <span className="text-xs text-gray-300">—</span>,
+    className: 'w-32',
+  };
   const moduleColumn: Column<any> = {
     key: 'sapModule',
     header: 'Module',
@@ -292,7 +338,7 @@ export default function RecordsPage() {
     ) : <span className="text-xs text-gray-300">—</span>,
     className: 'w-36',
   };
-    const plantColumn: Column<any> = {
+  const plantColumn: Column<any> = {
     key: 'plant',
     header: 'Plant',
     render: (row) => row.plant ? (
@@ -302,7 +348,7 @@ export default function RecordsPage() {
     ) : <span className="text-xs text-gray-300">—</span>,
     className: 'w-28',
   };
-    const clientColumn: Column<any> = {
+  const clientColumn: Column<any> = {
     key: 'customer',
     header: 'Client',
     render: (row) => row.customer ? (
@@ -312,40 +358,68 @@ export default function RecordsPage() {
     ) : <span className="text-xs text-gray-300">—</span>,
     className: 'w-44',
   };
-
-  const tailColumns: Column<any>[] = [
-    {
-      key: 'assignedAgent',
-      header: 'Assigned',
-      render: (row) => row.assignedAgent ? (
-        <span className="text-sm text-gray-700">
-          {row.assignedAgent.user.firstName} {row.assignedAgent.user.lastName}
+  const targetDateColumn: Column<any> = {
+    key: 'targetDate',
+    header: 'Target Date',
+    render: (row) => row.targetDate ? (
+      <span className="text-xs text-gray-700">{format(new Date(row.targetDate), 'MMM d, yyyy')}</span>
+    ) : <span className="text-xs text-gray-300">—</span>,
+    className: 'w-32',
+  };
+  const revisedTargetDateColumn: Column<any> = {
+    key: 'revisedTargetDate',
+    header: 'Revised Target Date',
+    render: (row) => row.revisedTargetDate ? (
+      <span className="text-xs text-gray-700">{format(new Date(row.revisedTargetDate), 'MMM d, yyyy')}</span>
+    ) : <span className="text-xs text-gray-300">—</span>,
+    className: 'w-32',
+  };
+  const assignedAgentColumn: Column<any> = {
+    key: 'assignedAgent',
+    header: 'Assigned',
+    render: (row) => row.assignedAgent ? (
+      <span className="text-sm text-gray-700">
+        {row.assignedAgent.user.firstName} {row.assignedAgent.user.lastName}
+      </span>
+    ) : <span className="text-xs text-gray-300">Unassigned</span>,
+    className: 'w-36',
+  };
+  const createdAtColumn: Column<any> = {
+    key: 'createdAt',
+    header: 'Created',
+    render: (row) => (
+      <div className="flex flex-col">
+        <span className="text-xs text-gray-400">
+          {formatDistanceToNow(new Date(row.createdAt), { addSuffix: true })}
         </span>
-      ) : <span className="text-xs text-gray-300">Unassigned</span>,
-      className: 'w-36',
-    },
-    {
-      key: 'createdAt',
-      header: 'Created',
-      render: (row) => (
-        <div className="flex flex-col">
-          <span className="text-xs text-gray-400">
-            {formatDistanceToNow(new Date(row.createdAt), { addSuffix: true })}
+        {row.createdBy && (
+          <span className="text-xs text-gray-500 font-medium truncate mt-0.5" title={`${row.createdBy.firstName} ${row.createdBy.lastName}`}>
+            by {row.createdBy.firstName} {row.createdBy.lastName}
           </span>
-          {row.createdBy && (
-            <span className="text-xs text-gray-500 font-medium truncate mt-0.5" title={`${row.createdBy.firstName} ${row.createdBy.lastName}`}>
-              by {row.createdBy.firstName} {row.createdBy.lastName}
-            </span>
-          )}
-        </div>
-      ),
-      className: 'w-40',
-    },
-  ];
+        )}
+      </div>
+    ),
+    className: 'w-40',
+  };
 
-  const columns: Column<any>[] = canSeeModuleColumn
-    ? [...baseColumns,plantColumn,clientColumn, moduleColumn, ...tailColumns]
-    : [...baseColumns,plantColumn,clientColumn, ...tailColumns];
+  const columnMap: Record<string, Column<any>> = {
+    recordNumber: recordNumberColumn, type: typeColumn, title: titleColumn,
+    priority: priorityColumn, status: statusColumn, sla: slaColumn,
+    plant: plantColumn, customer: clientColumn, sapModule: moduleColumn,
+    targetDate: targetDateColumn, revisedTargetDate: revisedTargetDateColumn,
+    assignedAgent: assignedAgentColumn, createdAt: createdAtColumn,
+  };
+  const ORDERED_COLUMN_KEYS = [
+    'recordNumber', 'type', 'title', 'priority', 'status', 'sla',
+    'plant', 'customer', 'sapModule', 'targetDate', 'revisedTargetDate',
+    'assignedAgent', 'createdAt',
+  ];
+  const LOCKED_COLUMNS = ['recordNumber', 'title'];
+
+  const columns: Column<any>[] = ORDERED_COLUMN_KEYS
+    .filter(key => key !== 'sapModule' || canSeeModuleColumn)
+    .filter(key => LOCKED_COLUMNS.includes(key) || visibleColKeys.includes(key))
+    .map(key => columnMap[key]);
 
   // ── Sort helper ──────────────────────────────────────────────
   const sortValue = `${filters.sortBy}_${filters.sortOrder}`;
@@ -431,6 +505,43 @@ export default function RecordsPage() {
               Clear
             </button>
           )}
+
+          <div className="relative">
+            <button
+              onClick={() => setShowColumnsPanel(!showColumnsPanel)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm border rounded-xl transition-colors ${
+                showColumnsPanel
+                  ? 'bg-blue-50 border-blue-300 text-blue-700'
+                  : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              Columns
+            </button>
+            {showColumnsPanel && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowColumnsPanel(false)} />
+                <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-lg z-20 p-3">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">Show Columns</p>
+                  <div className="space-y-0.5 max-h-80 overflow-y-auto">
+                    {TOGGLEABLE_COLUMNS
+                      .filter(c => c.key !== 'sapModule' || canSeeModuleColumn)
+                      .map(c => (
+                        <label key={c.key} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 cursor-pointer text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={visibleColKeys.includes(c.key)}
+                            onChange={() => toggleColumn(c.key)}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          {c.label}
+                        </label>
+                      ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 

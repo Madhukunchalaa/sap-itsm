@@ -6,6 +6,7 @@ export async function sendEmail(options: {
   to: string;
   subject: string;
   html: string;
+  attachments?: { name: string; contentBase64: string }[];
 }): Promise<{ messageId: string }> {
   const apiKey = process.env.BREVO_API_KEY || '';
   if (!apiKey) throw new Error('BREVO_API_KEY is not set');
@@ -18,6 +19,9 @@ export async function sendEmail(options: {
     to: [{ email: options.to }],
     subject: options.subject,
     htmlContent: options.html,
+    ...(options.attachments?.length
+      ? { attachment: options.attachments.map((a) => ({ content: a.contentBase64, name: a.name })) }
+      : {}),
   });
 
   console.log(`[mailer] sendMail via Brevo HTTP API → to=${options.to} subject="${options.subject}"`);

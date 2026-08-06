@@ -1,0 +1,125 @@
+{
+  "capability_map_version": "0.1",
+  "last_updated": "2026-07-26",
+  "build_order": [
+    "vendor_payment_block",
+    "po_status_release"
+  ],
+  "use_cases": [
+    {
+      "id": "vendor_payment_block",
+      "build_status": "not_started",
+      "ticket_category": "Vendor invoice / payment blocked",
+      "sap_module": "FI/MM",
+      "keywords": [
+        "invoice blocked",
+        "payment blocked",
+        "vendor block",
+        "can't post invoice",
+        "payment not going out",
+        "GR/IR mismatch"
+      ],
+      "primary_service": {
+        "name": "ZSUPPLIERPAYMENTBLOCK_0001",
+        "purpose": "Direct lookup of supplier/vendor payment block status and reason",
+        "status": "needs_verification",
+        "sample_query_params": {
+          "vendor": "e.g. 0000100523",
+          "company_code": "e.g. 1000",
+          "invoice_doc_number": "optional, if ticket references a specific invoice"
+        }
+      },
+      "supporting_services": [
+        {
+          "name": "ZC_MNTRDOCWTHGRIRFLAGNOTSET_CDS_0001",
+          "purpose": "Check GR/IR mismatch as a root cause for the block",
+          "status": "needs_verification"
+        },
+        {
+          "name": "ZMM_SUPPLIER_INVOICE_LIST_ENH_SRV_0001",
+          "purpose": "Pull invoice status/detail list",
+          "status": "needs_verification"
+        },
+        {
+          "name": "ZFAP_VENDOR_BALANCE_SRV_0001",
+          "purpose": "Vendor balance context (open items, overdue)",
+          "status": "needs_verification"
+        },
+        {
+          "name": "ZFAC_GRIR_RECONCILIATION_SRV_0001",
+          "purpose": "GR/IR reconciliation detail, if root cause is clearing-related",
+          "status": "needs_verification"
+        }
+      ],
+      "fallback_rfc_bapi": null,
+      "diagnosis_logic": [
+        "1. Query ZSUPPLIERPAYMENTBLOCK_0001 for the vendor/invoice -> get block reason code.",
+        "2. If block reason indicates price/qty/GR mismatch -> query ZC_MNTRDOCWTHGRIRFLAGNOTSET_CDS_0001 for GR/IR detail.",
+        "3. If block reason is manual/payment block (Zahlungssperre) -> check ZFAP_VENDOR_BALANCE_SRV_0001 for related open items.",
+        "4. Draft: block reason + likely cause + recommended action (release block / post GR / adjust qty)."
+      ],
+      "notes": "Highest-confidence starting use case: exact-name service match to the ticket type. No RFC fallback expected to be needed for v1."
+    },
+    {
+      "id": "po_status_release",
+      "build_status": "not_started",
+      "ticket_category": "Purchase Order stuck / not releasing / status check",
+      "sap_module": "MM",
+      "keywords": [
+        "PO not releasing",
+        "PO stuck",
+        "purchase order status",
+        "release strategy",
+        "approval pending"
+      ],
+      "primary_service": {
+        "name": "ZMM_PUR_POITEMS_MONI_SRV_0001",
+        "purpose": "PO item-level monitoring: status, quantities, flags",
+        "status": "needs_verification",
+        "sample_query_params": {
+          "po_number": "e.g. 4500012345",
+          "company_code": "e.g. 1000",
+          "plant": "optional"
+        }
+      },
+      "supporting_services": [
+        {
+          "name": "ZC_PURCHASEORDER_FS_SRV_0001",
+          "purpose": "PO header/full details (factsheet-style)",
+          "status": "needs_verification"
+        },
+        {
+          "name": "ZPO_DISPLAY_DETAILS_SRV_0001",
+          "purpose": "Alternative PO display detail service",
+          "status": "needs_verification"
+        },
+        {
+          "name": "ZMM_PUR_PO_MAINT_V2_SRV_0001",
+          "purpose": "PO maintain (release strategy fields, if exposed as read)",
+          "status": "needs_verification"
+        },
+        {
+          "name": "ZMM_PUR_CNTRL_PO_MAINTAIN_SRV_0001",
+          "purpose": "Alternative PO maintain/control service",
+          "status": "needs_verification"
+        },
+        {
+          "name": "ZAPI_PURCHASEORDER_PROCESS_SRV_0001",
+          "purpose": "Standard-style PO process API, fallback if Fiori-bound services are awkward via MCP",
+          "status": "needs_verification"
+        }
+      ],
+      "fallback_rfc_bapi": {
+        "candidate": "BAPI_PO_GETDETAIL / BAPI_PO_GETRELINFO",
+        "note": "Use only if none of the OData candidates above return release strategy / approver info cleanly."
+      },
+      "diagnosis_logic": [
+        "1. Query ZMM_PUR_POITEMS_MONI_SRV_0001 for PO status/flags.",
+        "2. If release-strategy info not present, query ZC_PURCHASEORDER_FS_SRV_0001 or ZPO_DISPLAY_DETAILS_SRV_0001 for header detail.",
+        "3. If still missing release code/approver, fall back to BAPI_PO_GETRELINFO via RFC.",
+        "4. Draft: current release status, pending approver/level, and likely reason (e.g. value threshold, missing account assignment)."
+      ],
+      "notes": "Multiple overlapping OData candidates -- test each against a real MCP call first, pick the cleanest response shape, then drop the rest from the map to keep it simple."
+    }
+  ]
+}

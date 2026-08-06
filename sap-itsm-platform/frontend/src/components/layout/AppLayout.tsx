@@ -98,6 +98,7 @@ const NAV_STRUCTURE = [
     children: [
       { to: '/cmdb',        icon: Server,      label: 'CMDB',        roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
       { to: '/sap-modules', icon: Layers,      label: 'SAP Modules', roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
+      { to: '/plant-notifications', icon: Mail, label: 'Status Email Settings', roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
       { to: '/audit',       icon: ShieldCheck, label: 'Audit Log',   roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
     ],
   },

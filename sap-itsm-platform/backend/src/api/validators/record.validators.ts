@@ -26,7 +26,7 @@ export const updateRecordSchema = z.object({
     description: z.string().min(10).max(10000).optional(),
     priority: z.enum(['P1', 'P2', 'P3', 'P4']).optional(),
     status: z
-      .enum(['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED', 'CANCELLED', 'AWAITING_CUSTOMER', 'WITH_SAP', 'REOPEN'])
+      .enum(['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED', 'CANCELLED', 'AWAITING_CUSTOMER', 'WITH_SAP', 'IN_UAT', 'HOLD', 'MOVED_TO_QUALITY', 'MOVED_TO_PRODUCTION', 'REOPEN'])
       .optional(),
     assignedAgentId: z.string().uuid().nullable().optional(),
     ciId: z.string().uuid().nullable().optional(),
@@ -35,6 +35,8 @@ export const updateRecordSchema = z.object({
     plant: z.string().nullable().optional(),
     tags: z.array(z.string()).optional(),
     metadata: z.record(z.unknown()).optional(),
+    targetDate: z.union([z.coerce.date(), z.null()]).optional(),
+    revisedTargetDate: z.union([z.coerce.date(), z.null()]).optional(),
   }),
 });
 
@@ -52,8 +54,8 @@ export const listRecordsSchema = z.object({
       .optional(),
     status: z
       .union([
-        z.enum(['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED', 'CANCELLED', 'AWAITING_CUSTOMER', 'WITH_SAP', 'REOPEN']),
-        z.array(z.enum(['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED', 'CANCELLED', 'AWAITING_CUSTOMER', 'WITH_SAP', 'REOPEN'])),
+        z.enum(['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED', 'CANCELLED', 'AWAITING_CUSTOMER', 'WITH_SAP', 'IN_UAT', 'HOLD', 'MOVED_TO_QUALITY', 'MOVED_TO_PRODUCTION', 'REOPEN']),
+        z.array(z.enum(['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED', 'CANCELLED', 'AWAITING_CUSTOMER', 'WITH_SAP', 'IN_UAT', 'HOLD', 'MOVED_TO_QUALITY', 'MOVED_TO_PRODUCTION', 'REOPEN'])),
       ])
       .optional(),
     priority: z

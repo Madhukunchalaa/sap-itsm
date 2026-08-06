@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MessageSquare, Timer, Paperclip, Save, X, Send, Lock, Edit2, History, Trash2, Upload, Download, XCircle, Sparkles, Loader2, Bot } from 'lucide-react';
+import { ArrowLeft, MessageSquare, Timer, Paperclip, Save, X, Send, Lock, Edit2, History, Trash2, Upload, Download, XCircle, Sparkles, Loader2, Bot, Database, HelpCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRecord, useUpdateRecord, useAddComment, useAddTimeEntry, useAgents, useDeleteRecord, useCloseRecord } from '../hooks/useApi';
@@ -17,17 +17,31 @@ import 'react-quill/dist/quill.snow.css';
 const STATUS_TRANSITIONS: Record<string, string[]> = {
   NEW:               ['OPEN','IN_PROGRESS','AWAITING_CUSTOMER','CANCELLED'],
   OPEN:              ['IN_PROGRESS','PENDING','AWAITING_CUSTOMER','RESOLVED','CANCELLED'],
-  IN_PROGRESS:       ['PENDING','AWAITING_CUSTOMER','RESOLVED','CLOSED'],
-  PENDING:           ['IN_PROGRESS','AWAITING_CUSTOMER','RESOLVED','CLOSED'],
+  IN_PROGRESS:       ['PENDING','AWAITING_CUSTOMER','IN_UAT','HOLD','MOVED_TO_QUALITY','RESOLVED','CLOSED'],
+  PENDING:           ['IN_PROGRESS','AWAITING_CUSTOMER','IN_UAT','HOLD','RESOLVED','CLOSED'],
   AWAITING_CUSTOMER: ['IN_PROGRESS','OPEN','RESOLVED','CLOSED'],
-  WITH_SAP:          ['IN_PROGRESS','PENDING','RESOLVED','CLOSED'],
+  WITH_SAP:          ['IN_PROGRESS','PENDING','IN_UAT','HOLD','RESOLVED','CLOSED'],
+  IN_UAT:            ['RESOLVED','IN_PROGRESS','CLOSED'],
+  HOLD:              ['IN_PROGRESS','PENDING','CANCELLED','CLOSED'],
+  MOVED_TO_QUALITY:  ['MOVED_TO_PRODUCTION','IN_PROGRESS','CLOSED'],
+  MOVED_TO_PRODUCTION: ['RESOLVED','IN_UAT','IN_PROGRESS','CLOSED'],
   RESOLVED:          ['CLOSED','IN_PROGRESS','REOPEN'],
-  CLOSED:            ['REOPEN'], 
+  CLOSED:            ['REOPEN'],
   CANCELLED:         ['REOPEN'],
   REOPEN:            ['IN_PROGRESS','AWAITING_CUSTOMER','RESOLVED','CLOSED'],
 };
 
-const SUPER_ADMIN_ALL_STATUSES = ['NEW','OPEN','IN_PROGRESS','PENDING','AWAITING_CUSTOMER','WITH_SAP','RESOLVED','CLOSED','CANCELLED','REOPEN'];
+const SUPER_ADMIN_ALL_STATUSES = ['NEW','OPEN','IN_PROGRESS','PENDING','AWAITING_CUSTOMER','WITH_SAP','IN_UAT','HOLD','MOVED_TO_QUALITY','MOVED_TO_PRODUCTION','RESOLVED','CLOSED','CANCELLED','REOPEN'];
+
+// Toolbar for the WYSIWYG ticket description editor (shared shape with the comment editor)
+const DESCRIPTION_QUILL_MODULES = {
+  toolbar: [
+    ['bold', 'italic', 'underline', 'strike'],
+    [{ list: 'ordered' }, { list: 'bullet' }],
+    ['link', 'blockquote', 'code-block'],
+    ['clean'],
+  ],
+};
 
 const PRIORITY_COLORS: Record<string,string> = {
   P1:'border-l-red-500', P2:'border-l-orange-500',
@@ -65,6 +79,8 @@ export default function RecordDetailPage() {
   const [editedDescription, setEditedDescription] = useState('');
   const [editedAgentId, setEditedAgentId] = useState('');
   const [editedPlant, setEditedPlant] = useState('');
+  const [editedTargetDate, setEditedTargetDate] = useState('');
+  const [editedRevisedTargetDate, setEditedRevisedTargetDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [attachments, setAttachments] = useState<any[]>([]);
   const [attachmentsLoaded, setAttachmentsLoaded] = useState(false);
@@ -74,6 +90,11 @@ export default function RecordDetailPage() {
   const [mentionFilter, setMentionFilter] = useState('');
   const [triage, setTriage] = useState<any>(null);
   const [triageLoading, setTriageLoading] = useState(false);
+  const [sapAnalysisText, setSapAnalysisText] = useState<string | null>(null);
+  const [sapAnalysisLoading, setSapAnalysisLoading] = useState(false);
+  const [sapAnalysisSaving, setSapAnalysisSaving] = useState(false);
+  const [sapClarifyingQuestions, setSapClarifyingQuestions] = useState<string[] | null>(null);
+  const [sapClarificationAnswers, setSapClarificationAnswers] = useState<string[]>([]);
   const queryClient = useQueryClient();
   const [editingCommentId, setEditingCommentId] = useState<string|null>(null);
   const [editingCommentText, setEditingCommentText] = useState('');
@@ -131,6 +152,71 @@ export default function RecordDetailPage() {
   const canTriage = user?.role === 'SUPER_ADMIN' || triageEmails.includes((user?.email||'').toLowerCase());
   const isUnassigned = !record.assignedAgent;
 
+  // "Perform AI Analysis" — narrow, explicit allowlist for now (no ACL yet).
+  const canSapAnalysis = (user?.email || '').toLowerCase() === 'tnarsimha@intraedge.com';
+
+  const runSapAnalysis = async () => {
+    setSapAnalysisLoading(true);
+    setSapClarifyingQuestions(null);
+    setSapAnalysisText(null);
+    try {
+      const res = await recordsApi.sapAnalysis(record.id);
+      if (res.data.analysis?.needsClarification) {
+        const questions = res.data.analysis.clarifyingQuestions || [];
+        setSapClarifyingQuestions(questions);
+        setSapClarificationAnswers(questions.map(() => ''));
+      } else {
+        setSapAnalysisText(res.data.analysisText);
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'SAP analysis failed');
+    } finally {
+      setSapAnalysisLoading(false);
+    }
+  };
+
+  const submitClarifications = async () => {
+    if (!sapClarifyingQuestions) return;
+    const clarifications = sapClarifyingQuestions.map((question, i) => ({
+      question, answer: sapClarificationAnswers[i] || '',
+    }));
+    if (clarifications.some(c => !c.answer.trim())) {
+      toast.error('Please answer all questions before re-analyzing');
+      return;
+    }
+    setSapAnalysisLoading(true);
+    try {
+      const res = await recordsApi.sapAnalysis(record.id, clarifications);
+      if (res.data.analysis?.needsClarification) {
+        const questions = res.data.analysis.clarifyingQuestions || [];
+        setSapClarifyingQuestions(questions);
+        setSapClarificationAnswers(questions.map(() => ''));
+      } else {
+        setSapClarifyingQuestions(null);
+        setSapAnalysisText(res.data.analysisText);
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'SAP analysis failed');
+    } finally {
+      setSapAnalysisLoading(false);
+    }
+  };
+
+  const saveSapAnalysis = async () => {
+    if (!sapAnalysisText?.trim()) return;
+    setSapAnalysisSaving(true);
+    try {
+      await recordsApi.saveSapAnalysis(record.id, sapAnalysisText);
+      await queryClient.invalidateQueries({ queryKey: ['record', id] });
+      toast.success('Analysis saved as an internal comment');
+      setSapAnalysisText(null);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to save analysis');
+    } finally {
+      setSapAnalysisSaving(false);
+    }
+  };
+
   const runTriage = async () => {
     setTriageLoading(true);
     try {
@@ -154,6 +240,8 @@ export default function RecordDetailPage() {
     setEditedDescription(record.description);
     setEditedAgentId(record.assignedAgent?.id || '');
     setEditedPlant(record.plant || '');
+    setEditedTargetDate(record.targetDate ? format(new Date(record.targetDate), 'yyyy-MM-dd') : '');
+    setEditedRevisedTargetDate(record.revisedTargetDate ? format(new Date(record.revisedTargetDate), 'yyyy-MM-dd') : '');
     setEditMode(true);
   };
 
@@ -169,6 +257,10 @@ export default function RecordDetailPage() {
       if (editedDescription !== record.description) updates.description = editedDescription;
       if (editedAgentId !== (record.assignedAgent?.id||'')) updates.assignedAgentId = editedAgentId || null;
       if (editedPlant !== (record.plant||'')) updates.plant = editedPlant || null;
+      const currentTargetDate = record.targetDate ? format(new Date(record.targetDate), 'yyyy-MM-dd') : '';
+      const currentRevisedTargetDate = record.revisedTargetDate ? format(new Date(record.revisedTargetDate), 'yyyy-MM-dd') : '';
+      if (editedTargetDate !== currentTargetDate) updates.targetDate = editedTargetDate || null;
+      if (editedRevisedTargetDate !== currentRevisedTargetDate) updates.revisedTargetDate = editedRevisedTargetDate || null;
       if (Object.keys(updates).length > 0) {
         await updateRecord.mutateAsync({ id: record.id, data: updates });
       }
@@ -226,6 +318,13 @@ export default function RecordDetailPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:opacity-60">
                 {triageLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : <Sparkles className="w-4 h-4"/>}
                 {triageLoading ? 'Analyzing…' : 'Analyze with AI'}
+              </button>
+            )}
+            {canSapAnalysis && (
+              <button onClick={runSapAnalysis} disabled={sapAnalysisLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg text-white bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 disabled:opacity-60">
+                {sapAnalysisLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : <Database className="w-4 h-4"/>}
+                {sapAnalysisLoading ? 'Querying SAP…' : 'Perform AI Analysis'}
               </button>
             )}
             {canClose && (
@@ -319,6 +418,70 @@ export default function RecordDetailPage() {
         </Card>
       )}
 
+      {sapClarifyingQuestions !== null && (
+        <Card>
+          <div className="p-5 border-l-4 border-l-amber-500 space-y-3">
+            <div className="flex items-center gap-2">
+              <HelpCircle className="w-5 h-5 text-amber-600"/>
+              <h3 className="text-sm font-semibold text-gray-800">A few details needed before analysis</h3>
+              <span className="ml-auto text-[11px] text-gray-400">The ticket doesn't say enough to give a precise answer</span>
+            </div>
+            {sapClarifyingQuestions.map((q, i) => (
+              <div key={i}>
+                <label className="block text-sm text-gray-700 mb-1">{q}</label>
+                <input
+                  value={sapClarificationAnswers[i] || ''}
+                  onChange={(e) => setSapClarificationAnswers(prev => {
+                    const next = [...prev]; next[i] = e.target.value; return next;
+                  })}
+                  className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+            ))}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setSapClarifyingQuestions(null)} disabled={sapAnalysisLoading}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-60">
+                Cancel
+              </button>
+              <button onClick={submitClarifications} disabled={sapAnalysisLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-60">
+                {sapAnalysisLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : <Sparkles className="w-4 h-4"/>}
+                {sapAnalysisLoading ? 'Re-analyzing…' : 'Submit & Re-analyze'}
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {sapAnalysisText !== null && (
+        <Card>
+          <div className="p-5 border-l-4 border-l-cyan-500 space-y-3">
+            <div className="flex items-center gap-2">
+              <Database className="w-5 h-5 text-cyan-600"/>
+              <h3 className="text-sm font-semibold text-gray-800">SAP Analysis (draft — edit before saving)</h3>
+              <span className="ml-auto text-[11px] text-gray-400">Nothing has been saved yet</span>
+            </div>
+            <textarea
+              value={sapAnalysisText}
+              onChange={(e) => setSapAnalysisText(e.target.value)}
+              rows={12}
+              className="w-full text-sm text-gray-800 border border-cyan-200 rounded-lg p-3 font-mono focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setSapAnalysisText(null)} disabled={sapAnalysisSaving}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-60">
+                Discard
+              </button>
+              <button onClick={saveSapAnalysis} disabled={sapAnalysisSaving}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg text-white bg-cyan-600 hover:bg-cyan-700 disabled:opacity-60">
+                {sapAnalysisSaving ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>}
+                {sapAnalysisSaving ? 'Saving…' : 'Save Analysis'}
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left: Main Content */}
         <div className="lg:col-span-2 space-y-4">
@@ -326,9 +489,10 @@ export default function RecordDetailPage() {
             <div className={`p-5 border-l-4 ${PRIORITY_COLORS[record.priority]||'border-l-gray-300'}`}>
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Description</h3>
               {editMode && user?.role !== 'USER'
-                ? <textarea value={editedDescription} onChange={e=>setEditedDescription(e.target.value)}
-                    rows={5} className="w-full text-sm text-gray-600 border border-blue-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"/>
-                : <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{record.description}</p>
+                ? <ReactQuill value={editedDescription} onChange={setEditedDescription} theme="snow"
+                    modules={DESCRIPTION_QUILL_MODULES} className="rounded-lg" style={{ minHeight: '150px' }}/>
+                : <div className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap prose prose-sm max-w-none"
+                    dangerouslySetInnerHTML={{ __html: record.description }}/>
               }
             </div>
           </Card>
@@ -823,6 +987,32 @@ export default function RecordDetailPage() {
                         {['P1','P2','P3','P4'].map(p=><option key={p}>{p}</option>)}
                       </select>
                     : <PriorityBadge priority={record.priority}/>
+                  }
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Target Date</label>
+                <div className="mt-1.5">
+                  {editMode
+                    ? <input type="date" value={editedTargetDate} onChange={e=>setEditedTargetDate(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"/>
+                    : <p className="text-sm text-gray-900 mt-1">
+                        {record.targetDate ? format(new Date(record.targetDate), 'MMM d, yyyy') : <span className="text-gray-400">Not set</span>}
+                      </p>
+                  }
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Revised Target Date</label>
+                <div className="mt-1.5">
+                  {editMode
+                    ? <input type="date" value={editedRevisedTargetDate} onChange={e=>setEditedRevisedTargetDate(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"/>
+                    : <p className="text-sm text-gray-900 mt-1">
+                        {record.revisedTargetDate ? format(new Date(record.revisedTargetDate), 'MMM d, yyyy') : <span className="text-gray-400">Not set</span>}
+                      </p>
                   }
                 </div>
               </div>

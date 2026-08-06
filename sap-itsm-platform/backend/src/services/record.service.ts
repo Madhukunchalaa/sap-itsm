@@ -75,6 +75,8 @@ const RECORD_SELECT = {
   sapModuleId: true,
   sapSubModuleId: true,
   metadata: true,
+  targetDate: true,
+  revisedTargetDate: true,
   resolvedAt: true,
   closedAt: true,
   respondedAt: true,
@@ -264,6 +266,10 @@ export async function createRecord(input: CreateRecordInput) {
   // AI triage in background — suggestions comment + metadata (never blocks creation)
   runAutoTriage(record as any).catch(err => console.error('[AITriage] Error:', err));
 
+  // SAP MCP analysis is NOT run automatically here — it's triggered manually
+  // via the "Perform AI Analysis" button on the ticket (see record.routes.ts
+  // POST /:id/sap-analysis, gated to SAP_ANALYSIS_EMAILS).
+
   return record;
 }
 
@@ -397,6 +403,8 @@ export async function updateRecord(
     sapSubModuleId: string | null;
     tags: string[];
     metadata: Record<string, unknown>;
+    targetDate: Date | null;
+    revisedTargetDate: Date | null;
   }>
 ) {
   const existing = await prisma.iTSMRecord.findFirst({ where: { id, tenantId } });

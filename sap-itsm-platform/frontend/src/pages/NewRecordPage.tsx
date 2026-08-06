@@ -3,9 +3,20 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Paperclip, X, Upload } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useCreateRecord, useCustomers } from '../hooks/useApi';
-import { Input, Select, Textarea, Button, PageHeader, Card } from '../components/ui/Forms';
+import { Input, Select, Button, PageHeader, Card } from '../components/ui/Forms';
 import { useAuthStore } from '../store/auth.store';
 import { agentsApi, sapModulesApi, recordsApi } from '../api/services';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
+
+const DESCRIPTION_QUILL_MODULES = {
+  toolbar: [
+    ['bold', 'italic', 'underline', 'strike'],
+    [{ list: 'ordered' }, { list: 'bullet' }],
+    ['link', 'blockquote', 'code-block'],
+    ['clean'],
+  ],
+};
 
 const TYPE_OPTIONS = [
   { value: 'INCIDENT', label: '🔴 Incident — Something is broken' },
@@ -74,7 +85,8 @@ export default function NewRecordPage() {
   const validate = () => {
     const errs: Record<string, string> = {};
     if (!form.title.trim() || form.title.length < 5) errs.title = 'Title must be at least 5 characters';
-    if (!form.description.trim() || form.description.length < 10) errs.description = 'Description must be at least 10 characters';
+    const plainDescription = form.description.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+    if (plainDescription.length < 10) errs.description = 'Description must be at least 10 characters';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -191,14 +203,18 @@ export default function NewRecordPage() {
             <Input label="Title" value={form.title} onChange={e => set('title', e.target.value)}
               placeholder="Brief, descriptive title" error={errors.title} maxLength={500}/>
 
-            <Textarea label="Description" value={form.description} onChange={e => set('description', e.target.value)}
-              placeholder={
-                form.recordType === 'INCIDENT' ? "What happened, when, who is affected, error messages…" :
-                form.recordType === 'REQUEST'  ? "What you need, system, user, business justification…" :
-                form.recordType === 'CHANGE'   ? "What, why, risk assessment, rollback plan…" :
-                "Problem description and symptoms…"
-              }
-              error={errors.description} rows={6}/>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-semibold text-gray-700">Description</label>
+              <ReactQuill value={form.description} onChange={val => set('description', val)}
+                placeholder={
+                  form.recordType === 'INCIDENT' ? "What happened, when, who is affected, error messages…" :
+                  form.recordType === 'REQUEST'  ? "What you need, system, user, business justification…" :
+                  form.recordType === 'CHANGE'   ? "What, why, risk assessment, rollback plan…" :
+                  "Problem description and symptoms…"
+                }
+                modules={DESCRIPTION_QUILL_MODULES} className="rounded-lg" style={{ minHeight: '150px' }}/>
+              {errors.description && <p className="text-xs text-red-500">{errors.description}</p>}
+            </div>
 
             {/* Customer + Contract */}
            

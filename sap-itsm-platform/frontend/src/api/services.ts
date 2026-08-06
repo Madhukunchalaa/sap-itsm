@@ -54,6 +54,12 @@ export const recordsApi = {
 
   aiTriage: (id: string) => apiClient.post(`/records/${id}/ai-triage`),
 
+  // Multi-round SAP MCP tool calls (especially over VPN to the real system)
+  // can take well over the default 30s client timeout — override it here.
+  sapAnalysis: (id: string, clarifications?: { question: string; answer: string }[]) =>
+    apiClient.post(`/records/${id}/sap-analysis`, { clarifications }, { timeout: 120000 }),
+  saveSapAnalysis: (id: string, text: string) => apiClient.post(`/records/${id}/sap-analysis/save`, { text }),
+
   get: (id: string) => apiClient.get(`/records/${id}`),
 
   create: (data: object) => apiClient.post('/records', data),
@@ -213,6 +219,13 @@ export const sapModulesApi = {
   updateSubModule: (id: string, data: object) => apiClient.patch(`/sap-modules/sub-modules/${id}`, data),
   deleteSubModule: (id: string) => apiClient.delete(`/sap-modules/sub-modules/${id}`),
   seed: () => apiClient.post('/sap-modules/seed'),
+};
+
+export const plantHeadEmailsApi = {
+  list: () => apiClient.get('/plant-head-emails'),
+  create: (data: object) => apiClient.post('/plant-head-emails', data),
+  update: (id: string, data: object) => apiClient.patch(`/plant-head-emails/${id}`, data),
+  delete: (id: string) => apiClient.delete(`/plant-head-emails/${id}`),
 };
 
 export const assignmentRulesApi = {

@@ -10,6 +10,7 @@ import {
 } from '../../services/record.service';
 import { prisma } from '../../config/database';
 import { generateTriage } from '../../services/chat.service';
+import { analyzeTicketWithSap, saveSapAnalysis, formatAnalysisForReview } from '../../services/sapAnalysis.service';
 import { AppError } from '../../utils/AppError';
 import { resolveAgent, resolveManagedCustomerIds } from './scopeHelpers';
 import { buildPaginatedResult } from '../../utils/pagination';
@@ -47,6 +48,56 @@ router.post('/:id/ai-triage', async (req: Request, res: Response, next: NextFunc
     }
     const triage = await generateTriage(req.user!.tenantId, req.params.id);
     res.json({ success: true, triage });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// SAP MCP Analysis — "Perform AI Analysis" button on the ticket. Reads the
+// ticket, queries live SAP via MCP, returns a draft for human review — never
+// runs automatically, never writes to SAP, never changes the ticket.
+// Access: explicit allowlist only (SAP_ANALYSIS_EMAILS) — no SUPER_ADMIN
+// bypass yet; this is intentionally narrow until ACL roles are introduced.
+// ─────────────────────────────────────────────────────────────
+const SAP_ANALYSIS_ALLOWED = (process.env.SAP_ANALYSIS_EMAILS || '')
+  .split(',')
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
+
+function canRunSapAnalysis(req: Request): boolean {
+  return SAP_ANALYSIS_ALLOWED.includes((req.user!.email || '').toLowerCase());
+}
+
+router.post('/:id/sap-analysis', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!canRunSapAnalysis(req)) {
+      throw new AppError('Access denied. SAP analysis is limited to authorized users.', 403);
+    }
+    const clarifications = Array.isArray(req.body?.clarifications)
+      ? req.body.clarifications.filter((c: any) => c?.question && c?.answer)
+      : undefined;
+    const analysis = await analyzeTicketWithSap(req.user!.tenantId, req.params.id, clarifications);
+    res.json({
+      success: true,
+      analysis,
+      analysisText: analysis.needsClarification ? null : formatAnalysisForReview(analysis),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Save the (possibly human-edited) analysis text as an internal comment.
+router.post('/:id/sap-analysis/save', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!canRunSapAnalysis(req)) {
+      throw new AppError('Access denied. SAP analysis is limited to authorized users.', 403);
+    }
+    const text = String(req.body?.text || '').trim();
+    if (!text) throw new AppError('Analysis text is required.', 400);
+    await saveSapAnalysis(req.user!.tenantId, req.params.id, req.user!.sub, text);
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }
@@ -278,7 +329,7 @@ router.post('/:id/close', async (req: Request, res: Response, next: NextFunction
       if (record.createdById !== req.user!.sub) {
         res.status(403).json({ success: false, error: 'Access denied' }); return;
       }
-      if (!['RESOLVED', 'OPEN', 'IN_PROGRESS', 'PENDING', 'AWAITING_CUSTOMER'].includes(record.status)) {
+      if (!['RESOLVED', 'OPEN', 'IN_PROGRESS', 'PENDING', 'AWAITING_CUSTOMER', 'IN_UAT'].includes(record.status)) {
         res.status(400).json({ success: false, error: 'Ticket cannot be closed from its current status' }); return;
       }
     } else if (!['SUPER_ADMIN','COMPANY_ADMIN','AGENT','PROJECT_MANAGER'].includes(role)) {
@@ -328,8 +379,16 @@ router.patch('/:id',
         }
       }
 
+      // validate() only checks req.body's shape — it doesn't rewrite it with
+      // Zod's coerced output, so date strings must be converted to real Date
+      // objects here before Prisma sees them (it rejects strings for
+      // DateTime columns with an opaque "Database validation error").
+      const body: any = { ...req.body };
+      if ('targetDate' in body) body.targetDate = body.targetDate ? new Date(body.targetDate) : null;
+      if ('revisedTargetDate' in body) body.revisedTargetDate = body.revisedTargetDate ? new Date(body.revisedTargetDate) : null;
+
       const record = await updateRecord(
-        req.params.id, req.user!.tenantId, req.user!.sub, req.body
+        req.params.id, req.user!.tenantId, req.user!.sub, body
       );
       res.json({ success: true, record });
     } catch (err) { next(err); }
