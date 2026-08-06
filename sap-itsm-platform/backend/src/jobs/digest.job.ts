@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { prisma } from '../config/database';
 import { logger } from '../config/logger';
-import { sendEmail } from '../config/mailer';
+import { sendRawEmail } from '../services/email.service';
 import { generateOverallReport, renderDigestHtml } from '../services/report.service';
 
 /**
@@ -47,7 +47,7 @@ export function initDigestJob() {
 
           for (const to of recipients) {
             try {
-              await sendEmail({ to, subject, html });
+              await sendRawEmail({ to, subject, html });
             } catch (err) {
               logger.error(`[Digest] Failed to send to ${to}:`, err);
             }

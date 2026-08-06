@@ -264,7 +264,8 @@ export async function createRecord(input: CreateRecordInput) {
   }
 
   // AI triage in background — suggestions comment + metadata (never blocks creation)
-  runAutoTriage(record as any).catch(err => console.error('[AITriage] Error:', err));
+  // Disable automatic triage comment per user request
+  // runAutoTriage(record as any).catch(err => console.error('[AITriage] Error:', err));
 
   // SAP MCP analysis is NOT run automatically here — it's triggered manually
   // via the "Perform AI Analysis" button on the ticket (see record.routes.ts

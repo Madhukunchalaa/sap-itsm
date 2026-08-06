@@ -12,6 +12,9 @@ dist/
 build/
 */dist/
 */build/
+# backend/mcp/sap-odata ships pre-compiled with no TS source to rebuild from —
+# it must be tracked, not treated as a regenerable build artifact.
+!backend/mcp/sap-odata/dist/
 
 # Logs
 logs/

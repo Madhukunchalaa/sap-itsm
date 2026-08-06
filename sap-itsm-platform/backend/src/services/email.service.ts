@@ -6,21 +6,20 @@ import { logger } from '../config/logger';
 let transporter: Transporter | null = null;
 
 function getTransporter(): Transporter {
-  if (transporter) return transporter;
-
-  transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    pool: true,
-    maxConnections: 5,
-    maxMessages: 100,
-  });
-
+  if (!transporter) {
+    const isGmail = (process.env.SMTP_HOST || '').includes('gmail.com');
+    transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: isGmail ? 465 : (Number(process.env.SMTP_PORT) || 587),
+      secure: isGmail ? true : (process.env.SMTP_SECURE === 'true'),
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+      // Short timeout to prevent exhausting connections if blocked
+      connectionTimeout: 10000,
+    });
+  }
   return transporter;
 }
 
@@ -229,6 +228,31 @@ export async function sendEmail(params: SendEmailParams): Promise<void> {
       data: { status: 'FAILED', error: err.message, retryCount: { increment: 1 } },
     });
     throw err; // Let BullMQ handle retry
+  }
+}
+
+export async function sendRawEmail(options: {
+  to: string;
+  subject: string;
+  html: string;
+  // Either a file path or an in-memory Buffer (nodemailer supports both).
+  attachments?: { filename: string; path?: string; content?: Buffer; contentType?: string }[];
+}): Promise<void> {
+  const fromName = process.env.SMTP_FROM_NAME || 'Service Desk Intraedge';
+  const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'noreply@example.com';
+  
+  try {
+    await getTransporter().sendMail({
+      from: `"${fromName}" <${fromEmail}>`,
+      to: options.to,
+      subject: options.subject,
+      html: options.html,
+      attachments: options.attachments,
+    });
+    logger.info(`Raw email sent to ${options.to}`);
+  } catch (err: any) {
+    logger.error(`Failed to send raw email to ${options.to}:`, err);
+    throw err;
   }
 }
 

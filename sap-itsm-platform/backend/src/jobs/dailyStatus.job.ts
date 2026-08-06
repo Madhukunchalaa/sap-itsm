@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { prisma } from '../config/database';
 import { logger } from '../config/logger';
-import { sendEmail } from '../config/mailer';
+import { sendRawEmail } from '../services/email.service';
 import { getActiveHeadEmailsForPlant, getDistinctPlants } from '../services/plantHeadEmail.service';
 import { getPlantStatusCounts, generatePlantStatusExcel } from '../services/plantStatusReport.service';
 
@@ -10,7 +10,8 @@ import { getPlantStatusCounts, generatePlantStatusExcel } from '../services/plan
  * For each active tenant and each plant that has configured head emails,
  * sends a status-count summary (Open/In Progress, Awaiting Customer, In UAT,
  * Hold, Resolved/Closed) with a ticket-level Excel attachment to that
- * plant's configured heads.
+ * plant's configured heads. Delivered via SMTP (email.service.ts) rather
+ * than the Brevo API — no BREVO_API_KEY is configured in this environment.
  */
 function renderPlantStatusHtml(
   tenantName: string, plant: string, counts: Record<string, number>, total: number
@@ -62,13 +63,13 @@ async function runPlantStatusReports() {
           const html = renderPlantStatusHtml(tenant.name, plant, counts, total);
           const subject = `📅 Daily Status Report — ${plant} (${tenant.name})`;
           const attachments = [{
-            name: `Status-Report-${plant.replace(/[^a-z0-9]+/gi, '-')}-${new Date().toISOString().split('T')[0]}.xlsx`,
-            contentBase64: excelBuffer.toString('base64'),
+            filename: `Status-Report-${plant.replace(/[^a-z0-9]+/gi, '-')}-${new Date().toISOString().split('T')[0]}.xlsx`,
+            content: excelBuffer,
           }];
 
           for (const to of recipients) {
             try {
-              await sendEmail({ to, subject, html, attachments });
+              await sendRawEmail({ to, subject, html, attachments });
             } catch (err) {
               logger.error(`[PlantStatus] Failed to send to ${to}:`, err);
             }
@@ -85,8 +86,8 @@ async function runPlantStatusReports() {
 }
 
 export function initDailyStatusJob() {
-  if (process.env.DIGEST_ENABLED === 'false') {
-    logger.info('Daily status job disabled via DIGEST_ENABLED=false');
+  if (process.env.DAILY_STATUS_ENABLED === 'false') {
+    logger.info('Daily status report job disabled via DAILY_STATUS_ENABLED=false');
     return;
   }
   logger.info('Initializing daily plant status report job (08:00 IST)...');
