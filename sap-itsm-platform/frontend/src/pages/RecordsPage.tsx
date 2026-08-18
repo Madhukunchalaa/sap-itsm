@@ -138,11 +138,6 @@ export default function RecordsPage() {
     label: `${m.code} – ${m.name}`,
   }));
 
-  const { data: plantsRaw = [] } = useQuery({
-    queryKey: ['plants-active'],
-    queryFn: () => plantsApi.list(true).then(r => r.data.data || []),
-  });
-
   const canFilterByAgent = user?.role === 'SUPER_ADMIN' || user?.role === 'PROJECT_MANAGER';
   const { data: agentsData } = useAgents(canFilterByAgent ? { limit: 200 } : undefined);
   const agentOptions: MultiSelectOption[] = (agentsData?.data || []).map((a: any) => ({
@@ -179,6 +174,13 @@ export default function RecordsPage() {
     selectedIds, setSelectedIds, toggleSelectedId,
     reset: clearFilters
   } = useRecordFilterStore();
+
+  // Plant options narrow to the selected Client — otherwise every customer's
+  // plants were shown regardless of which company was picked.
+  const { data: plantsRaw = [] } = useQuery({
+    queryKey: ['plants-for-filter', selCustomer],
+    queryFn: () => (selCustomer ? plantsApi.byCustomer(selCustomer) : plantsApi.list(true)).then(r => r.data.data || []),
+  });
 
   const [exportLimit, setExportLimit] = React.useState('current');
   const { data: resolvedCount } = useResolvedTicketCount(user?.id || '');
@@ -713,7 +715,7 @@ export default function RecordsPage() {
               </label>
               <select
                 value={selCustomer}
-                onChange={(e) => { setSelCustomer(e.target.value); setFilters({ page: 1 }); }}
+                onChange={(e) => { setSelCustomer(e.target.value); setSelPlant(''); setFilters({ page: 1 }); }}
                 className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               >
                 <option value="">All Clients</option>
