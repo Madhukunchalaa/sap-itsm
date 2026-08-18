@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Plus, Search, Pencil, Zap, Trash2, Crown, User as UserIcon, Building2 } from 'lucide-react';
 import { useUsers } from '../hooks/useApi';
 import { useQuery } from '@tanstack/react-query';
-import { customersApi } from '../api/services';
+import { customersApi, plantsApi } from '../api/services';
 import { PageHeader, Button, Input, Select } from '../components/ui/Forms';
 import { Modal } from '../components/ui/Modal';
 import { useAuthStore } from '../store/auth.store';
@@ -26,7 +26,7 @@ export default function UsersPage() {
   const isCompanyAdmin = currentUser?.role === 'COMPANY_ADMIN';
   const canCreate = isSuperAdmin || isCompanyAdmin;
 
-  const roleOptions = isSuperAdmin ? ['COMPANY_ADMIN','USER'] : ['USER'];
+  const roleOptions = isSuperAdmin ? ['COMPANY_ADMIN','USER','PLANT_MANAGER'] : ['USER','PLANT_MANAGER'];
 
   // Fetch all users (high limit to group them)
   const { data, isLoading } = useUsers({ page: 1, limit: 200, search: search || undefined });
@@ -47,8 +47,16 @@ export default function UsersPage() {
   });
   const customersList: any[] = modalCustomers || [];
 
-  const defaultForm = { email:'', password:'', firstName:'', lastName:'', role: 'USER', status:'ACTIVE', customerId:'' };
+  const defaultForm = { email:'', password:'', firstName:'', lastName:'', role: 'USER', status:'ACTIVE', customerId:'', sapModuleId:'', plant:'' };
   const [form, setForm] = useState(defaultForm);
+
+  // Plants for the currently-selected customer (Plant Manager form field)
+  const { data: modalPlants } = useQuery({
+    queryKey: ['plants-by-customer', form.customerId],
+    queryFn: () => plantsApi.byCustomer(form.customerId).then(r => r.data.data || []),
+    enabled: showModal && form.role === 'PLANT_MANAGER' && !!form.customerId,
+  });
+  const plantsList: any[] = modalPlants || [];
 
   const handleOpenCreate = () => {
     setForm(defaultForm);
@@ -60,6 +68,7 @@ export default function UsersPage() {
     setForm({
       email: u.email, password:'', firstName: u.firstName, lastName: u.lastName,
       role: u.role, status: u.status, customerId: u.customerId || '', sapModuleId: u.sapModuleId || '',
+      plant: u.plant || '',
     });
     setEditUser(u);
     setModal(true);
@@ -85,14 +94,20 @@ export default function UsersPage() {
           status: form.status,
           customerId: form.customerId || null,
           sapModuleId: form.sapModuleId || null,
+          plant: form.plant || null,
           ...(form.password ? { password: form.password } : {}),
         });
         toast.success('User updated');
       } else {
+        // customerId/sapModuleId/plant must be OMITTED (not sent as '') when
+        // unset — the backend validates them as optional UUIDs, and an empty
+        // string fails that check even though the field itself is optional.
+        const { customerId, sapModuleId, plant, ...rest } = form;
         await usersApi.create({
-          ...form,
-          ...(form.customerId ? { customerId: form.customerId } : {}),
-          ...(form.sapModuleId ? { sapModuleId: form.sapModuleId } : {}),
+          ...rest,
+          ...(customerId ? { customerId } : {}),
+          ...(sapModuleId ? { sapModuleId } : {}),
+          ...(plant ? { plant } : {}),
         });
         toast.success('User created');
       }
@@ -175,6 +190,7 @@ export default function UsersPage() {
       USER: 'bg-slate-100 text-slate-600',
       AGENT: 'bg-blue-100 text-blue-700',
       PROJECT_MANAGER: 'bg-purple-100 text-purple-700',
+      PLANT_MANAGER: 'bg-teal-100 text-teal-700',
     };
     return <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${styles[role]||'bg-gray-100 text-gray-600'}`}>{role.replace(/_/g,' ')}</span>;
   };
@@ -337,18 +353,35 @@ export default function UsersPage() {
             options={roleOptions.map(r=>({value:r, label:r.replace(/_/g,' ')}))}/>
           <Select label="Status" value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}
             options={ALL_STATUSES.map(s=>({value:s, label:s}))}/>
-          {(form.role === 'COMPANY_ADMIN' || form.role === 'USER') && (
+          {(form.role === 'COMPANY_ADMIN' || form.role === 'USER' || form.role === 'PLANT_MANAGER') && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Assign to Customer {form.role === 'COMPANY_ADMIN' && <span className="text-red-500">*</span>}
+                Assign to Customer {(form.role === 'COMPANY_ADMIN' || form.role === 'PLANT_MANAGER') && <span className="text-red-500">*</span>}
               </label>
-              <select value={form.customerId} onChange={e=>setForm(f=>({...f,customerId:e.target.value}))}
+              <select value={form.customerId} onChange={e=>setForm(f=>({...f,customerId:e.target.value, plant:''}))}
                 className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
                 <option value="">— None —</option>
                 {customersList.map((cu:any) => (
                   <option key={cu.id} value={cu.id}>{cu.companyName}</option>
                 ))}
               </select>
+            </div>
+          )}
+          {form.role === 'PLANT_MANAGER' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Plant <span className="text-red-500">*</span>
+              </label>
+              <select value={form.plant} onChange={e=>setForm(f=>({...f,plant:e.target.value}))} disabled={!form.customerId}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white disabled:bg-gray-50 disabled:text-gray-400">
+                <option value="">{form.customerId ? '— Select a plant —' : 'Select a customer first'}</option>
+                {plantsList.map((p:any) => (
+                  <option key={p.id} value={p.name}>{p.name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                This account will only see tickets for this plant, and cannot create, edit, comment on, or assign tickets.
+              </p>
             </div>
           )}
           {form.role === 'USER' && (

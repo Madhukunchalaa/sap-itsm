@@ -24,6 +24,16 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 const router = Router();
 router.use(verifyJWT, enforceTenantScope);
 
+// PLANT_MANAGER is a view-only role scoped to one plant — block every
+// write verb here so no individual route needs its own guard.
+router.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.user!.role === 'PLANT_MANAGER' && req.method !== 'GET') {
+    res.status(403).json({ success: false, error: 'Plant Manager accounts are view-only' });
+    return;
+  }
+  next();
+});
+
 const EMPTY = { success: true, ...buildPaginatedResult([], 0, 1, 20) };
 
 // ─────────────────────────────────────────────────────────────
@@ -57,16 +67,12 @@ router.post('/:id/ai-triage', async (req: Request, res: Response, next: NextFunc
 // SAP MCP Analysis — "Perform AI Analysis" button on the ticket. Reads the
 // ticket, queries live SAP via MCP, returns a draft for human review — never
 // runs automatically, never writes to SAP, never changes the ticket.
-// Access: explicit allowlist only (SAP_ANALYSIS_EMAILS) — no SUPER_ADMIN
-// bypass yet; this is intentionally narrow until ACL roles are introduced.
+// Access: Super Admin always, plus any user with canRunSapAnalysis=true —
+// granted per-Project-Manager via the "AI Analysis Access" settings page
+// (PATCH /users/:id, Super Admin only).
 // ─────────────────────────────────────────────────────────────
-const SAP_ANALYSIS_ALLOWED = (process.env.SAP_ANALYSIS_EMAILS || '')
-  .split(',')
-  .map((e) => e.trim().toLowerCase())
-  .filter(Boolean);
-
 function canRunSapAnalysis(req: Request): boolean {
-  return SAP_ANALYSIS_ALLOWED.includes((req.user!.email || '').toLowerCase());
+  return req.user!.role === 'SUPER_ADMIN' || !!req.user!.canRunSapAnalysis;
 }
 
 router.post('/:id/sap-analysis', async (req: Request, res: Response, next: NextFunction) => {
@@ -171,6 +177,11 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
         if (q.customerId) customerId = q.customerId;
         break;
       }
+      case 'PLANT_MANAGER': {
+        if (!req.user!.customerId || !req.user!.plant) { res.json(EMPTY); return; }
+        customerId = req.user!.customerId;
+        break;
+      }
       default: {
         if (q.assignedAgentId) assignedAgentId = q.assignedAgentId;
         if (q.createdById) createdById = q.createdById;
@@ -210,7 +221,7 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
       assignedAgentIdIn: assignedAgentIdIn,
       sapModuleIdIn:   sapModuleIdIn.length ? sapModuleIdIn : undefined,
       userOrModulesFilter,
-      plant:           q.plant,
+      plant:           role === 'PLANT_MANAGER' ? req.user!.plant : q.plant,
       search:          q.search,
       sortBy:          q.sortBy,
       sortOrder:       q.sortOrder,
@@ -272,6 +283,12 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       case 'AGENT': {
         const agent = await resolveAgent(userId);
         if (!agent || record.assignedAgentId !== agent.id) {
+          res.status(403).json({ success: false, error: 'Access denied' }); return;
+        }
+        break;
+      }
+      case 'PLANT_MANAGER': {
+        if (record.customerId !== req.user!.customerId || record.plant !== req.user!.plant) {
           res.status(403).json({ success: false, error: 'Access denied' }); return;
         }
         break;
@@ -377,6 +394,13 @@ router.patch('/:id',
           });
           return;
         }
+      }
+
+      // Changing SAP Module/Sub-Module is limited to Super Admin and Project Manager.
+      if (('sapModuleId' in req.body || 'sapSubModuleId' in req.body) &&
+          !['SUPER_ADMIN', 'PROJECT_MANAGER'].includes(role)) {
+        res.status(403).json({ success: false, error: 'Access denied. Only Super Admin and Project Manager can change the SAP Module.' });
+        return;
       }
 
       // validate() only checks req.body's shape — it doesn't rewrite it with

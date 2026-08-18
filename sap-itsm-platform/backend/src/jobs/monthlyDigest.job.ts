@@ -6,19 +6,18 @@ import { generateOverallReport, renderDigestHtml } from '../services/report.serv
 import { getSubscribers, groupSubscribers } from '../services/reportSubscription.service';
 
 /**
- * Weekly service-desk digest — every Monday 08:00 IST. Same three scope
- * tiers as Daily: Tenant Overall, Customer Overall (all that customer's
- * plants), or Plant Status (one plant) — volumes/SLA/agent-performance/
- * hotspots, scoped accordingly.
+ * Monthly service-desk digest — 1st of the month, 08:00 IST. Same shape and
+ * three scope tiers as Weekly, with period='month' (volumes vs. previous
+ * month, SLA compliance, agent performance, hotspots).
  */
 async function sendScoped(recipients: string[], subject: string, html: string) {
   for (const to of recipients) {
     try { await sendRawEmail({ to, subject, html }); }
-    catch (err) { logger.error(`[Digest] Failed to send to ${to}:`, err); }
+    catch (err) { logger.error(`[MonthlyDigest] Failed to send to ${to}:`, err); }
   }
 }
 
-async function runWeeklyDigest() {
+async function runMonthlyDigest() {
   const tenants = await prisma.tenant.findMany({
     where: { status: 'ACTIVE' },
     select: { id: true, name: true },
@@ -26,16 +25,16 @@ async function runWeeklyDigest() {
 
   for (const tenant of tenants) {
     try {
-      const subs = await getSubscribers(tenant.id, 'weekly');
+      const subs = await getSubscribers(tenant.id, 'monthly');
       const { tenantWide, byCustomer, byPlant } = groupSubscribers(subs);
 
       // ── Tenant Overall ─────────────────────────────────────
       if (tenantWide.length > 0) {
-        const report = await generateOverallReport(tenant.id, 'week');
+        const report = await generateOverallReport(tenant.id, 'month');
         if (report.volumes.created > 0 || report.volumes.resolved > 0) {
           const html = renderDigestHtml(tenant.name, report);
-          await sendScoped(tenantWide, `📊 Weekly Service Desk Report — ${tenant.name}`, html);
-          logger.info(`[Digest] Sent Tenant Overall weekly for ${tenant.name} to ${tenantWide.length} recipient(s)`);
+          await sendScoped(tenantWide, `📈 Monthly Service Desk Report — ${tenant.name}`, html);
+          logger.info(`[MonthlyDigest] Sent Tenant Overall monthly for ${tenant.name} to ${tenantWide.length} recipient(s)`);
         }
       }
 
@@ -44,13 +43,13 @@ async function runWeeklyDigest() {
         try {
           const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { companyName: true } });
           if (!customer) continue;
-          const report = await generateOverallReport(tenant.id, 'week', [customerId]);
+          const report = await generateOverallReport(tenant.id, 'month', [customerId]);
           if (report.volumes.created === 0 && report.volumes.resolved === 0) continue;
           const html = renderDigestHtml(`${tenant.name} — ${customer.companyName}`, report);
-          await sendScoped(emails, `📊 Weekly Service Desk Report — ${customer.companyName} (${tenant.name})`, html);
-          logger.info(`[Digest] Sent Customer Overall weekly (${customer.companyName}) for ${tenant.name} to ${emails.length} recipient(s)`);
+          await sendScoped(emails, `📈 Monthly Service Desk Report — ${customer.companyName} (${tenant.name})`, html);
+          logger.info(`[MonthlyDigest] Sent Customer Overall monthly (${customer.companyName}) for ${tenant.name} to ${emails.length} recipient(s)`);
         } catch (err) {
-          logger.error(`[Digest] Customer Overall weekly failed for customer ${customerId} (tenant ${tenant.name}):`, err);
+          logger.error(`[MonthlyDigest] Customer Overall monthly failed for customer ${customerId} (tenant ${tenant.name}):`, err);
         }
       }
 
@@ -59,34 +58,34 @@ async function runWeeklyDigest() {
         try {
           const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { companyName: true } });
           if (!customer) continue;
-          const report = await generateOverallReport(tenant.id, 'week', [customerId], plant);
+          const report = await generateOverallReport(tenant.id, 'month', [customerId], plant);
           if (report.volumes.created === 0 && report.volumes.resolved === 0) continue;
           const html = renderDigestHtml(`${tenant.name} — ${customer.companyName} / ${plant}`, report);
-          await sendScoped(emails, `📊 Weekly Service Desk Report — ${plant} (${customer.companyName})`, html);
-          logger.info(`[Digest] Sent Plant Status weekly (${plant}) for ${tenant.name} to ${emails.length} recipient(s)`);
+          await sendScoped(emails, `📈 Monthly Service Desk Report — ${plant} (${customer.companyName})`, html);
+          logger.info(`[MonthlyDigest] Sent Plant Status monthly (${plant}) for ${tenant.name} to ${emails.length} recipient(s)`);
         } catch (err) {
-          logger.error(`[Digest] Plant Status weekly failed for ${plant} (tenant ${tenant.name}):`, err);
+          logger.error(`[MonthlyDigest] Plant Status monthly failed for ${plant} (tenant ${tenant.name}):`, err);
         }
       }
     } catch (err) {
-      logger.error(`[Digest] Weekly run failed for ${tenant.name}:`, err);
+      logger.error(`[MonthlyDigest] Monthly run failed for ${tenant.name}:`, err);
     }
   }
 }
 
-export function initDigestJob() {
+export function initMonthlyDigestJob() {
   if (process.env.DIGEST_ENABLED === 'false') {
-    logger.info('Weekly digest job disabled via DIGEST_ENABLED=false');
+    logger.info('Monthly digest job disabled via DIGEST_ENABLED=false');
     return;
   }
-  logger.info('Initializing weekly report digest job (Mondays 08:00 IST)...');
+  logger.info('Initializing monthly report digest job (1st of month, 08:00 IST)...');
 
-  cron.schedule('0 8 * * 1', async () => {
-    logger.info('Generating weekly report digests...');
+  cron.schedule('0 8 1 * *', async () => {
+    logger.info('Generating monthly report digests...');
     try {
-      await runWeeklyDigest();
+      await runMonthlyDigest();
     } catch (err) {
-      logger.error('[Digest] Weekly digest run failed:', err);
+      logger.error('[MonthlyDigest] Monthly digest run failed:', err);
     }
   }, {
     timezone: 'Asia/Kolkata',
@@ -94,6 +93,6 @@ export function initDigestJob() {
 }
 
 // Manual trigger for testing
-export async function triggerWeeklyDigestManually() {
-  await runWeeklyDigest();
+export async function triggerMonthlyDigestManually() {
+  await runMonthlyDigest();
 }

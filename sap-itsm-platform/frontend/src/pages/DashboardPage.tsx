@@ -5,9 +5,9 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend
 } from 'recharts';
-import { Ticket, AlertTriangle, Clock, Users, RefreshCw, TrendingUp } from 'lucide-react';
+import { Ticket, AlertTriangle, Clock, Users, RefreshCw, TrendingUp, CheckCircle2, FlaskConical } from 'lucide-react';
 import { useDashboard } from '../hooks/useApi';
-import { dashboardApi } from '../api/services';
+import { dashboardApi, plantsApi } from '../api/services';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { StatCard, Card, PageHeader } from '../components/ui/Forms';
 import { PriorityBadge, StatusBadge, TypeBadge, SLABadge } from '../components/ui/Badges';
@@ -47,6 +47,10 @@ function AdminDashboard() {
   const { user } = useAuthStore();
   const [plantFilter, setPlantFilter] = React.useState<string>('');
   const { data: dashboard, isLoading, refetch, dataUpdatedAt } = useDashboard(plantFilter || undefined);
+  const { data: plantsRaw = [] } = useQuery({
+    queryKey: ['plants-active'],
+    queryFn: () => plantsApi.list(true).then(r => r.data.data || []),
+  });
 
   if (isLoading) return <LoadingSpinner fullscreen label="Loading dashboard…" />;
   if (!dashboard) return (
@@ -78,16 +82,18 @@ function AdminDashboard() {
         subtitle="Here's what's happening in your service desk"
         actions={
           <div className="flex items-center gap-3">
-            <select
-              value={plantFilter}
-              onChange={(e) => setPlantFilter(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[140px]"
-            >
-              <option value="">All Plants</option>
-              <option value="SEPC - 3121">SEPC - 3121</option>
-              <option value="TAQA - 2301">TAQA - 2301</option>
-              <option value="2121 - Anpara">2121 - Anpara</option>
-            </select>
+            {user?.role !== 'PLANT_MANAGER' && (
+              <select
+                value={plantFilter}
+                onChange={(e) => setPlantFilter(e.target.value)}
+                className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[140px]"
+              >
+                <option value="">All Plants</option>
+                {plantsRaw.map((p: any) => (
+                  <option key={p.id} value={p.name}>{p.name}</option>
+                ))}
+              </select>
+            )}
             <button
               onClick={() => refetch()}
               className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50"
@@ -100,7 +106,7 @@ function AdminDashboard() {
       />
 
       {/* ── KPI Cards ─────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
         <StatCard
           label="Open Tickets"
           value={d?.summary?.totalOpen ?? 0}
@@ -128,6 +134,20 @@ function AdminDashboard() {
           sub="Active breaches"
           icon={<Clock className="w-6 h-6" />}
           color="orange"
+        />
+        <StatCard
+          label="Resolved Today"
+          value={d?.summary?.resolvedToday ?? 0}
+          sub="Since midnight"
+          icon={<CheckCircle2 className="w-6 h-6" />}
+          color="green"
+        />
+        <StatCard
+          label="In UAT"
+          value={d?.summary?.inUatCount ?? 0}
+          sub="Currently in UAT"
+          icon={<FlaskConical className="w-6 h-6" />}
+          color="blue"
         />
       </div>
 

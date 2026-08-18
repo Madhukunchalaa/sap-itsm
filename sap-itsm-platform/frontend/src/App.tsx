@@ -27,7 +27,10 @@ const HolidaysPage       = lazy(() => import('./pages/HolidaysPage'));
 const NotificationsPage  = lazy(() => import('./pages/NotificationsPage'));
 const SAPModulesPage     = lazy(() => import('./pages/SAPModulesPage'));
 const AssignmentRulesPage = lazy(() => import('./pages/AssignmentRulesPage'));
-const PlantHeadEmailsPage = lazy(() => import('./pages/PlantHeadEmailsPage'));
+const ReportSubscriptionsPage = lazy(() => import('./pages/ReportSubscriptionsPage'));
+const PlantsPage = lazy(() => import('./pages/PlantsPage'));
+const AiAnalysisAccessPage = lazy(() => import('./pages/AiAnalysisAccessPage'));
+const StatusHistoryPage = lazy(() => import('./pages/StatusHistoryPage'));
 const AppLayout          = lazy(() => import('./components/layout/AppLayout'));
 
 // Customers — list + form + detail
@@ -80,7 +83,11 @@ export default function App() {
                 {/* General */}
                 <Route path="/dashboard"   element={<DashboardPage />} />
                 <Route path="/records"     element={<RecordsPage />} />
-                <Route path="/records/new" element={<NewRecordPage />} />
+                <Route path="/records/new" element={
+                  <ProtectedRoute roles={['SUPER_ADMIN','COMPANY_ADMIN','AGENT','USER','PROJECT_MANAGER']}>
+                    <NewRecordPage />
+                  </ProtectedRoute>
+                } />
                 <Route path="/records/:id" element={<RecordDetailPage />} />
                 <Route path="/sla-policies" element={<SLAPolicyMasterPage />} />
                 <Route path="/sla-report" element={
@@ -195,9 +202,24 @@ export default function App() {
                     <NotificationsPage />
                   </ProtectedRoute>
                 } />
-                <Route path="/plant-notifications" element={
-                  <ProtectedRoute roles={['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER']}>
-                    <PlantHeadEmailsPage />
+                <Route path="/report-subscriptions" element={
+                  <ProtectedRoute roles={['SUPER_ADMIN', 'PROJECT_MANAGER']}>
+                    <ReportSubscriptionsPage />
+                  </ProtectedRoute>
+                } />
+                <Route path="/plants" element={
+                  <ProtectedRoute roles={['SUPER_ADMIN', 'PROJECT_MANAGER']}>
+                    <PlantsPage />
+                  </ProtectedRoute>
+                } />
+                <Route path="/ai-analysis-access" element={
+                  <ProtectedRoute roles={['SUPER_ADMIN']}>
+                    <AiAnalysisAccessPage />
+                  </ProtectedRoute>
+                } />
+                <Route path="/status-history" element={
+                  <ProtectedRoute roles={['SUPER_ADMIN','COMPANY_ADMIN','PROJECT_MANAGER','PLANT_MANAGER']}>
+                    <StatusHistoryPage />
                   </ProtectedRoute>
                 } />
                 <Route path="/sap-modules" element={

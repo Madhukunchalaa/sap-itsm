@@ -18,9 +18,10 @@ const createUserSchema = z.object({
     password: z.string().min(8).regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/),
     firstName: z.string().min(1).max(100),
     lastName: z.string().min(1).max(100),
-    role: z.enum(['SUPER_ADMIN', 'COMPANY_ADMIN', 'USER', 'AGENT', 'PROJECT_MANAGER']),
+    role: z.enum(['SUPER_ADMIN', 'COMPANY_ADMIN', 'USER', 'AGENT', 'PROJECT_MANAGER', 'PLANT_MANAGER']),
     sapModuleId: z.string().uuid().optional(),
     customerId: z.string().uuid().optional(),
+    plant: z.string().optional(),
   }),
 });
 
@@ -78,7 +79,7 @@ router.get('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'), 
         select: {
           id: true, email: true, firstName: true, lastName: true,
           role: true, status: true, lastLoginAt: true, createdAt: true,
-          customerId: true, sapModuleId: true,
+          customerId: true, sapModuleId: true, canRunSapAnalysis: true, plant: true,
           customer: { select: { id: true, companyName: true } },
           sapModule: { select: { id: true, name: true, code: true } },
           agent: { select: { id: true, level: true, status: true } },
@@ -96,7 +97,12 @@ router.get('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'), 
 // POST /users
 router.post('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'), validate(createUserSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { email, password, firstName, lastName, role, customerId, sapModuleId } = req.body;
+    const { email, password, firstName, lastName, role, customerId, sapModuleId, plant } = req.body;
+
+    if (role === 'PLANT_MANAGER' && (!customerId || !plant)) {
+      res.status(400).json({ success: false, error: 'Plant Manager accounts require both a Customer and a Plant' });
+      return;
+    }
 
     // Domain validation: if customer has allowedDomains, validate email domain
     const resolvedCustomerId = customerId || req.user!.customerId;
@@ -127,6 +133,7 @@ router.post('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'),
         status:     'ACTIVE',
         customerId: customerId || undefined,
         sapModuleId: sapModuleId || undefined,
+        plant: plant || undefined,
       },
       select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true, createdAt: true },
     });
@@ -143,7 +150,7 @@ router.get('/:id', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'
       where: { id: req.params.id, tenantId: req.user!.tenantId },
       select: {
         id: true, email: true, firstName: true, lastName: true,
-        role: true, status: true, lastLoginAt: true, createdAt: true, customerId: true,
+        role: true, status: true, lastLoginAt: true, createdAt: true, customerId: true, plant: true,
         customer: { select: { id: true, companyName: true } },
       },
     });
@@ -174,12 +181,21 @@ router.patch('/:id', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGE
         res.status(403).json({ success: false, error: 'Access denied' }); return;
       }
     }
-    const allowed = ['firstName', 'lastName', 'email', 'role', 'status', 'customerId', 'sapModuleId'];
+    const allowed = ['firstName', 'lastName', 'email', 'role', 'status', 'customerId', 'sapModuleId', 'plant'];
     const data: Record<string, unknown> = {};
     for (const k of allowed) {
       if (req.body[k] !== undefined) {
         data[k] = req.body[k] === '' ? null : req.body[k];
       }
+    }
+    // "Perform AI Analysis" access is a sensitive grant — only Super Admin can toggle it,
+    // even though Company Admin/PM can edit other fields on this same endpoint.
+    if (req.body.canRunSapAnalysis !== undefined) {
+      if (req.user!.role !== 'SUPER_ADMIN') {
+        res.status(403).json({ success: false, error: 'Only Super Admin can change AI Analysis access' });
+        return;
+      }
+      data.canRunSapAnalysis = !!req.body.canRunSapAnalysis;
     }
     if (data.email) data.email = (data.email as string).toLowerCase().trim();
     if (req.body.password) {

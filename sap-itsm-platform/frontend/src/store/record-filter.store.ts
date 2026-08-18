@@ -9,6 +9,8 @@ interface RecordFilterState {
     limit: number;
     sortBy: string;
     sortOrder: 'asc' | 'desc';
+    from?: string;
+    to?: string;
   };
   
   // Multi-select and specialized filters

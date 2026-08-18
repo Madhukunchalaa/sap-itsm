@@ -12,6 +12,8 @@ export interface JWTPayload {
   email: string;
   customerId?: string | null;   // set for COMPANY_ADMIN and USER — re-fetched from DB
   sapModuleId?: string | null;  // SAP module restriction
+  canRunSapAnalysis?: boolean;  // "Perform AI Analysis" access — re-fetched from DB
+  plant?: string | null;        // PLANT_MANAGER restriction — view-only, scoped to one plant
   iat?: number;
   exp?: number;
 }
@@ -47,7 +49,7 @@ export const verifyJWT = async (
     // Verify user still exists and is active — also fetch fresh customerId
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, status: true, tenantId: true, role: true, customerId: true, sapModuleId: true },
+      select: { id: true, status: true, tenantId: true, role: true, customerId: true, sapModuleId: true, canRunSapAnalysis: true, plant: true },
     });
 
     if (!user) {
@@ -57,11 +59,13 @@ export const verifyJWT = async (
       throw new AppError('Account is disabled', 401, 'ACCOUNT_DISABLED');
     }
 
-    // Attach payload with fresh customerId from DB (not from stale JWT)
+    // Attach payload with fresh customerId/canRunSapAnalysis from DB (not stale JWT)
     req.user = {
       ...payload,
       customerId: user.customerId ?? null,
       sapModuleId: user.sapModuleId ?? null,
+      canRunSapAnalysis: user.canRunSapAnalysis,
+      plant: user.plant ?? null,
     };
     next();
   } catch (error) {

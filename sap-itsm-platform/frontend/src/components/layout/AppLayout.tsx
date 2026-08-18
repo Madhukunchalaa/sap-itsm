@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Ticket, Users, UserCog, Building2, FileText, Tag,
   Server, Shield, ShieldCheck, LogOut, Bell, ChevronDown, AlertTriangle,
   Plus, User, Clock, Calendar, Mail, ChevronRight, Settings,
-  Target, Layers, Zap, Check
+  Target, Layers, Zap, Check, Database, History
 } from 'lucide-react';
 import { useAuthStore } from '../../store/auth.store';
 import { authApi } from '../../api/services';
@@ -90,6 +90,12 @@ const NAV_STRUCTURE = [
     icon: Bell,
     roles: ['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'],
   },
+  {
+    label: 'Status History',
+    to: '/status-history',
+    icon: History,
+    roles: ['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER', 'PLANT_MANAGER'],
+  },
   // Admin dropdown
   {
     label: 'Admin',
@@ -98,7 +104,9 @@ const NAV_STRUCTURE = [
     children: [
       { to: '/cmdb',        icon: Server,      label: 'CMDB',        roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
       { to: '/sap-modules', icon: Layers,      label: 'SAP Modules', roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
-      { to: '/plant-notifications', icon: Mail, label: 'Status Email Settings', roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
+      { to: '/report-subscriptions', icon: Mail, label: 'Report Subscriptions', roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
+      { to: '/plants', icon: Server, label: 'Plants', roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
+      { to: '/ai-analysis-access', icon: Database, label: 'AI Analysis Access', roles: ['SUPER_ADMIN'] },
       { to: '/audit',       icon: ShieldCheck, label: 'Audit Log',   roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
     ],
   },
@@ -166,10 +174,19 @@ function NavDropdown({
 export default function AppLayout() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
-  const { user, refreshToken, logout } = useAuthStore();
+  const { user, refreshToken, logout, setUser } = useAuthStore();
   const navigate = useNavigate();
   const { data: resolvedCount } = useResolvedTicketCount(user?.id || '');
   const [restrictionModalOpen, setRestrictionModalOpen] = useState(false);
+
+  // Refresh the cached profile once per app load so permission grants (e.g.
+  // AI Analysis access toggled by a Super Admin) show up without re-login.
+  useEffect(() => {
+    authApi.me()
+      .then(r => { if (r.data?.user) setUser({ ...user, ...r.data.user }); })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const role = user?.role || '';
 
@@ -202,6 +219,7 @@ export default function AppLayout() {
     COMPANY_ADMIN:   'Company Administrator',
     AGENT:           'Support Agent',
     PROJECT_MANAGER: 'Project Manager',
+    PLANT_MANAGER:   'Plant Manager',
     USER:            'End User',
   };
 
@@ -232,21 +250,23 @@ export default function AppLayout() {
 
         {/* Right: New Ticket + Bell + User */}
         <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
-          <button
-            onClick={() => {
-              const isDrillmec = user?.customer?.companyName?.toLowerCase().includes('drillmec');
-              if (user?.role === 'USER' && !isDrillmec && (resolvedCount || 0) >= 15) {
-                setRestrictionModalOpen(true);
-              } else {
-                navigate('/records/new');
-              }
-            }}
-            className="flex items-center gap-1.5 bg-white text-indigo-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-indigo-50 transition-colors shadow-sm"
-          >
-            <Plus className="w-4 h-4" /> New Ticket
-          </button>
+          {role !== 'PLANT_MANAGER' && (
+            <button
+              onClick={() => {
+                const isDrillmec = user?.customer?.companyName?.toLowerCase().includes('drillmec');
+                if (user?.role === 'USER' && !isDrillmec && (resolvedCount || 0) >= 15) {
+                  setRestrictionModalOpen(true);
+                } else {
+                  navigate('/records/new');
+                }
+              }}
+              className="flex items-center gap-1.5 bg-white text-indigo-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-indigo-50 transition-colors shadow-sm"
+            >
+              <Plus className="w-4 h-4" /> New Ticket
+            </button>
+          )}
 
-          <RestrictionModal 
+          <RestrictionModal
             open={restrictionModalOpen} 
             onClose={() => setRestrictionModalOpen(false)} 
             count={resolvedCount || 0} 

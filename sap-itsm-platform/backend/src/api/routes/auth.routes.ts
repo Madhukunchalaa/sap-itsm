@@ -77,6 +77,8 @@ router.get('/me', verifyJWT, async (req: Request, res: Response, next: NextFunct
         status: true,
         tenantId: true,
         customerId: true,
+        canRunSapAnalysis: true,
+        plant: true,
         lastLoginAt: true,
         createdAt: true,
         agent: { select: { id: true, level: true, specialization: true, status: true } },

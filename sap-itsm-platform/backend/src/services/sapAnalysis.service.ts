@@ -11,7 +11,7 @@ import { listSapTools, callSapTool, isReadOnlySapTool } from './sapMcpClient.ser
 // SAP ticket automation pipeline — human-gated, on demand only:
 //   1. Business user creates a ticket as normal (no AI involved at creation).
 //   2. Staff clicks "Perform AI Analysis" on the ticket (record.routes.ts,
-//      gated to SAP_ANALYSIS_EMAILS — see canRunSapAnalysis).
+//      gated to User.canRunSapAnalysis — see canRunSapAnalysis() in record.routes.ts).
 //   3. buildTicketPrompt() turns the ticket into a precise analysis prompt,
 //      with module-specific guidance from MODULE_HINTS.
 //   4. The prompt + live SAP MCP tools are handed to the LLM in a

@@ -3,7 +3,9 @@ import { verifyJWT } from '../middleware/auth.middleware';
 import { prisma } from '../../config/database';
 import { AppError } from '../../utils/AppError';
 import { performDatabaseBackup } from '../../jobs/backup.job';
-import { triggerDailyStatusManually } from '../../jobs/dailyStatus.job';
+import { triggerDailyDigestManually } from '../../jobs/dailyDigest.job';
+import { triggerWeeklyDigestManually } from '../../jobs/digest.job';
+import { triggerMonthlyDigestManually } from '../../jobs/monthlyDigest.job';
 
 const router = Router();
 
@@ -17,11 +19,25 @@ router.get('/test-backup-job', (req: Request, res: Response, next: NextFunction)
 });
 
 router.get('/test-daily-status', (req: Request, res: Response, next: NextFunction) => {
-  triggerDailyStatusManually().catch(err => {
-    console.error('Background daily status test failed:', err);
+  triggerDailyDigestManually().catch(err => {
+    console.error('Background daily digest test failed:', err);
   });
-  
-  res.json({ success: true, message: 'Daily status email started in the background. Check your email shortly.' });
+
+  res.json({ success: true, message: 'Daily digest (all-plants + per-plant) started in the background. Check your email shortly.' });
+});
+
+router.get('/test-weekly-digest', (req: Request, res: Response, next: NextFunction) => {
+  triggerWeeklyDigestManually().catch(err => {
+    console.error('Background weekly digest test failed:', err);
+  });
+  res.json({ success: true, message: 'Weekly digest started in the background. Check your email shortly.' });
+});
+
+router.get('/test-monthly-digest', (req: Request, res: Response, next: NextFunction) => {
+  triggerMonthlyDigestManually().catch(err => {
+    console.error('Background monthly digest test failed:', err);
+  });
+  res.json({ success: true, message: 'Monthly digest started in the background. Check your email shortly.' });
 });
 
 router.get('/backup-email', async (req: Request, res: Response, next: NextFunction) => {

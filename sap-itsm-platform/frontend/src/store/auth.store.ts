@@ -8,6 +8,8 @@ export interface AuthUser {
   lastName: string;
   role: string;
   tenantId: string;
+  canRunSapAnalysis?: boolean;
+  plant?: string | null;
   agent?: { id: string; level: string; status: string };
   tenant?: { id: string; name: string; timezone: string };
   customer?: { id: string; companyName: string };

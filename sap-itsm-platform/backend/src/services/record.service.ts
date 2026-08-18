@@ -269,7 +269,10 @@ export async function createRecord(input: CreateRecordInput) {
 
   // SAP MCP analysis is NOT run automatically here — it's triggered manually
   // via the "Perform AI Analysis" button on the ticket (see record.routes.ts
-  // POST /:id/sap-analysis, gated to SAP_ANALYSIS_EMAILS).
+  // POST /:id/sap-analysis, gated to User.canRunSapAnalysis).
+
+  // New ticket affects every role-scoped dashboard's counts (open, new today, etc.)
+  await cache.delPattern('dash*').catch(() => null);
 
   return record;
 }
@@ -473,6 +476,10 @@ export async function updateRecord(
   });
 
   await cache.del(`record:${id}`);
+  // Status/priority/etc changes affect every role-scoped dashboard's counts
+  // (e.g. Resolved Today, In UAT) — was previously never invalidated, so
+  // those widgets could show stale data for up to the 120s cache TTL.
+  await cache.delPattern('dash*').catch(() => null);
 
   const diff = diffObjects(existing as any, { ...existing, ...updates } as any);
   await auditLog({

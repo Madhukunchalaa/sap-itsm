@@ -9,7 +9,8 @@ import { RestrictionModal } from '../components/records/RestrictionModal';
 import { PageHeader, Button } from '../components/ui/Forms';
 import { MultiSelectDropdown, MultiSelectOption } from '../components/ui/MultiSelectDropdown';
 import { formatDistanceToNow, format } from 'date-fns';
-import { recordsApi, RecordFilters } from '../api/services';
+import { recordsApi, plantsApi, RecordFilters } from '../api/services';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../store/auth.store';
 import { useRecordFilterStore } from '../store/record-filter.store';
 import toast from 'react-hot-toast';
@@ -137,6 +138,11 @@ export default function RecordsPage() {
     label: `${m.code} – ${m.name}`,
   }));
 
+  const { data: plantsRaw = [] } = useQuery({
+    queryKey: ['plants-active'],
+    queryFn: () => plantsApi.list(true).then(r => r.data.data || []),
+  });
+
   const canFilterByAgent = user?.role === 'SUPER_ADMIN' || user?.role === 'PROJECT_MANAGER';
   const { data: agentsData } = useAgents(canFilterByAgent ? { limit: 200 } : undefined);
   const agentOptions: MultiSelectOption[] = (agentsData?.data || []).map((a: any) => ({
@@ -144,7 +150,7 @@ export default function RecordsPage() {
     label: `${a.user.firstName} ${a.user.lastName}`,
   }));
 
-  const canFilterByCreator = user?.role !== 'USER';
+  const canFilterByCreator = !['USER', 'PLANT_MANAGER'].includes(user?.role || '');
   const { data: usersData } = useUsers(canFilterByCreator ? { limit: 500 } : undefined);
   const creatorOptions: MultiSelectOption[] = (usersData?.data || []).map((u: any) => ({
     value: u.id,
@@ -199,7 +205,41 @@ export default function RecordsPage() {
     (selPlant           ? 1 : 0) +
     (selCustomer        ? 1 : 0) +
     (selAgent.length    > 0 ? 1 : 0) +
-    (selCreator         ? 1 : 0);
+    (selCreator         ? 1 : 0) +
+    (filters.from || filters.to ? 1 : 0);
+
+  // ── Date range / Month-Year filter ──────────────────────────
+  // Both controls just write filters.from/to (ISO datetimes) — the month
+  // picker is a convenience shortcut for "the whole calendar month".
+  const fromDateValue = filters.from ? format(new Date(filters.from), 'yyyy-MM-dd') : '';
+  const toDateValue = filters.to ? format(new Date(filters.to), 'yyyy-MM-dd') : '';
+
+  const monthValue = React.useMemo(() => {
+    if (!filters.from || !filters.to) return '';
+    const from = new Date(filters.from);
+    const to = new Date(filters.to);
+    const expectedFrom = new Date(from.getFullYear(), from.getMonth(), 1, 0, 0, 0, 0);
+    const expectedTo = new Date(from.getFullYear(), from.getMonth() + 1, 0, 23, 59, 59, 999);
+    if (from.getTime() === expectedFrom.getTime() && to.getTime() === expectedTo.getTime()) {
+      return `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}`;
+    }
+    return '';
+  }, [filters.from, filters.to]);
+
+  const handleFromChange = (value: string) => {
+    setFilters({ from: value ? new Date(`${value}T00:00:00`).toISOString() : undefined, page: 1 });
+  };
+  const handleToChange = (value: string) => {
+    setFilters({ to: value ? new Date(`${value}T23:59:59.999`).toISOString() : undefined, page: 1 });
+  };
+  const handleMonthChange = (value: string) => {
+    if (!value) { setFilters({ from: undefined, to: undefined, page: 1 }); return; }
+    const [y, m] = value.split('-').map(Number);
+    const from = new Date(y, m - 1, 1, 0, 0, 0, 0);
+    const to = new Date(y, m, 0, 23, 59, 59, 999);
+    setFilters({ from: from.toISOString(), to: to.toISOString(), page: 1 });
+  };
+  const clearDateFilters = () => setFilters({ from: undefined, to: undefined, page: 1 });
 
   const handleExportExcel = async () => {
     let records = data?.data || [];
@@ -449,17 +489,19 @@ export default function RecordsPage() {
                 <Download className="w-4 h-4" /> Export Excel
               </button>
             </div>
-            <Button onClick={() => {
-              const isDrillmec = user?.customer?.companyName?.toLowerCase().includes('drillmec');
-              if (user?.role === 'USER' && !isDrillmec && (resolvedCount || 0) >= 15) {
-                setRestrictionModalOpen(true);
-              } else {
-                navigate('/records/new');
-              }
-            }}>
-              <Plus className="w-4 h-4" />
-              New Ticket
-            </Button>
+            {user?.role !== 'PLANT_MANAGER' && (
+              <Button onClick={() => {
+                const isDrillmec = user?.customer?.companyName?.toLowerCase().includes('drillmec');
+                if (user?.role === 'USER' && !isDrillmec && (resolvedCount || 0) >= 15) {
+                  setRestrictionModalOpen(true);
+                } else {
+                  navigate('/records/new');
+                }
+              }}>
+                <Plus className="w-4 h-4" />
+                New Ticket
+              </Button>
+            )}
             <RestrictionModal 
               open={restrictionModalOpen} 
               onClose={() => setRestrictionModalOpen(false)} 
@@ -642,41 +684,45 @@ export default function RecordsPage() {
             </div>
           )}
 
-          {/* Plant */}
-          <div>
-            <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
-              Plant
-              {selPlant && <span className="text-blue-600 font-semibold">1</span>}
-            </label>
-            <select
-              value={selPlant}
-              onChange={(e) => { setSelPlant(e.target.value); setFilters({ page: 1 }); }}
-              className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            >
-              <option value="">All Plants</option>
-              <option value="SEPC - 3121">SEPC - 3121</option>
-              <option value="TAQA - 2301">TAQA - 2301</option>
-              <option value="2121 - Anpara">2121 - Anpara</option>
-            </select>
-          </div>
+          {/* Plant — hidden for Plant Manager, whose scope is fixed to one plant */}
+          {user?.role !== 'PLANT_MANAGER' && (
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
+                Plant
+                {selPlant && <span className="text-blue-600 font-semibold">1</span>}
+              </label>
+              <select
+                value={selPlant}
+                onChange={(e) => { setSelPlant(e.target.value); setFilters({ page: 1 }); }}
+                className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="">All Plants</option>
+                {plantsRaw.map((p: any) => (
+                  <option key={p.id} value={p.name}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
-          {/* Client / Customer */}
-          <div>
-            <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
-              Client
-              {selCustomer && <span className="text-blue-600 font-semibold">1</span>}
-            </label>
-            <select
-              value={selCustomer}
-              onChange={(e) => { setSelCustomer(e.target.value); setFilters({ page: 1 }); }}
-              className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            >
-              <option value="">All Clients</option>
-              {customerOptions.map((c) => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-            </select>
-          </div>
+          {/* Client / Customer — hidden for Plant Manager, whose scope is fixed to one customer */}
+          {user?.role !== 'PLANT_MANAGER' && (
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
+                Client
+                {selCustomer && <span className="text-blue-600 font-semibold">1</span>}
+              </label>
+              <select
+                value={selCustomer}
+                onChange={(e) => { setSelCustomer(e.target.value); setFilters({ page: 1 }); }}
+                className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="">All Clients</option>
+                {customerOptions.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Sort */}
           <div>
@@ -692,6 +738,34 @@ export default function RecordsPage() {
               {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
+        </div>
+      )}
+
+      {showFilters && (
+        <div className="flex flex-wrap items-end gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1.5 block">Created From</label>
+            <input type="date" value={fromDateValue} onChange={(e) => handleFromChange(e.target.value)}
+              max={toDateValue || undefined}
+              className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"/>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1.5 block">Created To</label>
+            <input type="date" value={toDateValue} onChange={(e) => handleToChange(e.target.value)}
+              min={fromDateValue || undefined}
+              className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"/>
+          </div>
+          <div className="text-xs text-gray-400 pb-2">or</div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1.5 block">Month / Year</label>
+            <input type="month" value={monthValue} onChange={(e) => handleMonthChange(e.target.value)}
+              className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"/>
+          </div>
+          {(filters.from || filters.to) && (
+            <button onClick={clearDateFilters} className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-100">
+              Clear dates
+            </button>
+          )}
         </div>
       )}
 

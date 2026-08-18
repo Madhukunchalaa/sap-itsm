@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCreateRecord, useCustomers } from '../hooks/useApi';
 import { Input, Select, Button, PageHeader, Card } from '../components/ui/Forms';
 import { useAuthStore } from '../store/auth.store';
-import { agentsApi, sapModulesApi, recordsApi } from '../api/services';
+import { agentsApi, sapModulesApi, plantsApi, recordsApi } from '../api/services';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 
@@ -67,6 +67,16 @@ export default function NewRecordPage() {
   const sapModules: any[] = sapModulesData || [];
   const selectedModule = sapModules.find((m: any) => m.id === form.sapModuleId);
   const sapSubModules: any[] = selectedModule?.subModules || [];
+
+  // End users don't pick a customer explicitly (it's set server-side from
+  // their own account), so fall back to their own customer for plant scoping.
+  const effectiveCustomerId = form.customerId || (user as any)?.customer?.id || '';
+  const { data: plantsData } = useQuery({
+    queryKey: ['plants-by-customer', effectiveCustomerId],
+    queryFn: () => plantsApi.byCustomer(effectiveCustomerId).then(r => r.data.data || []),
+    enabled: !!effectiveCustomerId,
+  });
+  const plants: any[] = plantsData || [];
 
 
 
@@ -155,25 +165,20 @@ export default function NewRecordPage() {
               </div>
             )}
 
-            {/* Plant (Only for MEIL customer) */}
-            {(() => {
-              const currentCompanyName = user?.customer?.companyName || customerList.find(c => c.id === form.customerId)?.companyName || '';
-              const isMeilCustomer = currentCompanyName.toLowerCase().includes('meil');
-              if (!isMeilCustomer) return null;
-              
-              return (
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Select Plant</label>
-                  <select value={form.plant} onChange={e => set('plant', e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                    <option value="">— Select Plant —</option>
-                    <option value="SEPC - 3121">SEPC - 3121</option>
-                    <option value="TAQA - 2301">TAQA - 2301</option>
-                    <option value="2121 - Anpara">2121 - Anpara</option>
-                  </select>
-                </div>
-              );
-            })()}
+            {/* Plant — scoped to the selected (or own) customer */}
+            {effectiveCustomerId && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Select Plant</label>
+                <select value={form.plant} onChange={e => set('plant', e.target.value)}
+                  disabled={plants.length === 0}
+                  className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400">
+                  <option value="">{plants.length ? '— Select Plant —' : '— No plants configured for this customer —'}</option>
+                  {plants.map((p: any) => (
+                    <option key={p.id} value={p.name}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* SAP Module / Sub-Module */}
             <div className="grid grid-cols-2 gap-4">

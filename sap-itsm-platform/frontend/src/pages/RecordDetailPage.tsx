@@ -2,9 +2,9 @@ import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, MessageSquare, Timer, Paperclip, Save, X, Send, Lock, Edit2, History, Trash2, Upload, Download, XCircle, Sparkles, Loader2, Bot, Database, HelpCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useRecord, useUpdateRecord, useAddComment, useAddTimeEntry, useAgents, useDeleteRecord, useCloseRecord } from '../hooks/useApi';
-import { auditApi, recordsApi } from '../api/services';
+import { auditApi, recordsApi, sapModulesApi, plantsApi } from '../api/services';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { PriorityBadge, StatusBadge, TypeBadge } from '../components/ui/Badges';
 import { Button, Card, Textarea } from '../components/ui/Forms';
@@ -62,6 +62,20 @@ export default function RecordDetailPage() {
   const { data: agentsData } = useAgents({ limit: 100 });
   const agents = agentsData?.data || [];
 
+  const { data: sapModulesData } = useQuery({
+    queryKey: ['sap-modules-active'],
+    queryFn: () => sapModulesApi.active().then(r => r.data.data || []),
+  });
+  const sapModules: any[] = sapModulesData || [];
+
+  const recordCustomerId = record?.customer?.id;
+  const { data: plantsData } = useQuery({
+    queryKey: ['plants-by-customer', recordCustomerId],
+    queryFn: () => plantsApi.byCustomer(recordCustomerId!).then(r => r.data.data || []),
+    enabled: !!recordCustomerId,
+  });
+  const plants: any[] = plantsData || [];
+
   const [activeTab, setActiveTab] = useState<'comments'|'time'|'changelog'>('comments');
   const [changeLog, setChangeLog] = React.useState<any[]>([]);
   const [logLoading, setLogLoading] = React.useState(false);
@@ -81,6 +95,8 @@ export default function RecordDetailPage() {
   const [editedPlant, setEditedPlant] = useState('');
   const [editedTargetDate, setEditedTargetDate] = useState('');
   const [editedRevisedTargetDate, setEditedRevisedTargetDate] = useState('');
+  const [editedSapModuleId, setEditedSapModuleId] = useState('');
+  const [editedSapSubModuleId, setEditedSapSubModuleId] = useState('');
   const [saving, setSaving] = useState(false);
   const [attachments, setAttachments] = useState<any[]>([]);
   const [attachmentsLoaded, setAttachmentsLoaded] = useState(false);
@@ -143,6 +159,7 @@ export default function RecordDetailPage() {
 
   const canEdit = ['SUPER_ADMIN','COMPANY_ADMIN','AGENT','PROJECT_MANAGER','USER'].includes(user?.role||'');
   const canAssign = ['SUPER_ADMIN','COMPANY_ADMIN','PROJECT_MANAGER'].includes(user?.role||'');
+  const canEditSapModule = ['SUPER_ADMIN','PROJECT_MANAGER'].includes(user?.role||'');
   const canSeeInternal = ['SUPER_ADMIN', 'AGENT'].includes(user?.role||'');
 
   // AI Triage access: SUPER_ADMIN, or an email in VITE_AI_TRIAGE_EMAILS (mirror
@@ -152,8 +169,9 @@ export default function RecordDetailPage() {
   const canTriage = user?.role === 'SUPER_ADMIN' || triageEmails.includes((user?.email||'').toLowerCase());
   const isUnassigned = !record.assignedAgent;
 
-  // "Perform AI Analysis" — narrow, explicit allowlist for now (no ACL yet).
-  const canSapAnalysis = (user?.email || '').toLowerCase() === 'tnarsimha@intraedge.com';
+  // "Perform AI Analysis" — Super Admin always, or a Project Manager granted
+  // access via the AI Analysis Access settings page.
+  const canSapAnalysis = user?.role === 'SUPER_ADMIN' || !!user?.canRunSapAnalysis;
 
   const runSapAnalysis = async () => {
     setSapAnalysisLoading(true);
@@ -242,6 +260,8 @@ export default function RecordDetailPage() {
     setEditedPlant(record.plant || '');
     setEditedTargetDate(record.targetDate ? format(new Date(record.targetDate), 'yyyy-MM-dd') : '');
     setEditedRevisedTargetDate(record.revisedTargetDate ? format(new Date(record.revisedTargetDate), 'yyyy-MM-dd') : '');
+    setEditedSapModuleId(record.sapModule?.id || '');
+    setEditedSapSubModuleId(record.sapSubModule?.id || '');
     setEditMode(true);
   };
 
@@ -261,6 +281,12 @@ export default function RecordDetailPage() {
       const currentRevisedTargetDate = record.revisedTargetDate ? format(new Date(record.revisedTargetDate), 'yyyy-MM-dd') : '';
       if (editedTargetDate !== currentTargetDate) updates.targetDate = editedTargetDate || null;
       if (editedRevisedTargetDate !== currentRevisedTargetDate) updates.revisedTargetDate = editedRevisedTargetDate || null;
+      if (canEditSapModule && editedSapModuleId !== (record.sapModule?.id||'')) {
+        updates.sapModuleId = editedSapModuleId || null;
+        updates.sapSubModuleId = editedSapSubModuleId || null;
+      } else if (canEditSapModule && editedSapSubModuleId !== (record.sapSubModule?.id||'')) {
+        updates.sapSubModuleId = editedSapSubModuleId || null;
+      }
       if (Object.keys(updates).length > 0) {
         await updateRecord.mutateAsync({ id: record.id, data: updates });
       }
@@ -503,28 +529,32 @@ export default function RecordDetailPage() {
                 <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
                   <Paperclip className="w-4 h-4"/> Attachments ({attachments.length})
                 </h3>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-50"
-                >
-                  <Upload className="w-3.5 h-3.5"/> {uploading ? 'Uploading…' : 'Upload'}
-                </button>
-                <input ref={fileInputRef} type="file" className="hidden" multiple
-                  onChange={async (e) => {
-                    const files = Array.from(e.target.files || []);
-                    if (!files.length) return;
-                    setUploading(true);
-                    try {
-                      for (const file of files) {
-                        const res = await recordsApi.uploadAttachment(record.id, file);
-                        const att = res.data.attachment;
-                        const urlRes = await recordsApi.getAttachments(record.id);
-                        setAttachments(urlRes.data.attachments || []);
-                      }
-                    } finally { setUploading(false); e.target.value = ''; }
-                  }}
-                />
+                {canEdit && (
+                  <>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-50"
+                    >
+                      <Upload className="w-3.5 h-3.5"/> {uploading ? 'Uploading…' : 'Upload'}
+                    </button>
+                    <input ref={fileInputRef} type="file" className="hidden" multiple
+                      onChange={async (e) => {
+                        const files = Array.from(e.target.files || []);
+                        if (!files.length) return;
+                        setUploading(true);
+                        try {
+                          for (const file of files) {
+                            const res = await recordsApi.uploadAttachment(record.id, file);
+                            const att = res.data.attachment;
+                            const urlRes = await recordsApi.getAttachments(record.id);
+                            setAttachments(urlRes.data.attachments || []);
+                          }
+                        } finally { setUploading(false); e.target.value = ''; }
+                      }}
+                    />
+                  </>
+                )}
               </div>
               {attachments.length === 0
                 ? <p className="text-sm text-gray-400 text-center py-3">No attachments yet.</p>
@@ -672,6 +702,7 @@ export default function RecordDetailPage() {
                   </div>
                   );
                 })}
+                {canEdit && (
                 <div className="border-t border-gray-100 pt-4">
                   <div className="relative">
                     <ReactQuill
@@ -755,6 +786,7 @@ export default function RecordDetailPage() {
                     </Button>
                   </div>
                 </div>
+                  )}
               </div>
             )}
 
@@ -1060,18 +1092,48 @@ export default function RecordDetailPage() {
                   <p className="text-xs text-gray-400">{record.ci.ciType}</p>
                 </div>
               )}
-              {record.sapModule && (
+              {(record.sapModule || (editMode && canEditSapModule)) && (
                 <div>
                   <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">SAP Module</label>
-                  <p className="text-sm text-gray-900 mt-1">
-                    <span className="font-mono font-bold text-indigo-600">{record.sapModule.code}</span>{' '}
-                    {record.sapModule.name}
-                  </p>
-                  {record.sapSubModule && (
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      <span className="font-mono">{record.sapSubModule.code}</span> — {record.sapSubModule.name}
-                    </p>
-                  )}
+                  {editMode && canEditSapModule ? (
+                    <div className="mt-1.5 space-y-2">
+                      <select value={editedSapModuleId}
+                        onChange={e => { setEditedSapModuleId(e.target.value); setEditedSapSubModuleId(''); }}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <option value="">— Select Module —</option>
+                        {sapModules.map((m: any) => (
+                          <option key={m.id} value={m.id}>{m.code} — {m.name}</option>
+                        ))}
+                      </select>
+                      {(() => {
+                        const selectedModule = sapModules.find((m: any) => m.id === editedSapModuleId);
+                        const subModules = selectedModule?.subModules || [];
+                        if (!editedSapModuleId) return null;
+                        return (
+                          <select value={editedSapSubModuleId} onChange={e => setEditedSapSubModuleId(e.target.value)}
+                            disabled={subModules.length === 0}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400">
+                            <option value="">{subModules.length ? '— Select Sub-Module —' : '— No sub-modules —'}</option>
+                            {subModules.map((s: any) => (
+                              <option key={s.id} value={s.id}>{s.code} — {s.name}</option>
+                            ))}
+                          </select>
+                        );
+                      })()}
+                    </div>
+                  ) : record.sapModule ? (
+                    <>
+                      <p className="text-sm text-gray-900 mt-1">
+                        <span className="font-mono font-bold text-indigo-600">{record.sapModule.code}</span>{' '}
+                        {record.sapModule.name}
+                      </p>
+                      {record.sapSubModule && (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          <span className="font-mono">{record.sapSubModule.code}</span> — {record.sapSubModule.name}
+                        </p>
+                      )}
+                    </>
+                  ) : null}
                 </div>
               )}
               {(record.plant || editMode) && (
@@ -1080,11 +1142,12 @@ export default function RecordDetailPage() {
                   <div className="mt-1.5">
                     {editMode
                       ? <select value={editedPlant} onChange={e=>setEditedPlant(e.target.value)}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                          <option value="">— Select Plant —</option>
-                          <option value="SEPC - 3121">SEPC - 3121</option>
-                          <option value="TAQA - 2301">TAQA - 2301</option>
-                          <option value="2121 - Anpara">2121 - Anpara</option>
+                          disabled={plants.length === 0}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400">
+                          <option value="">{plants.length ? '— Select Plant —' : '— No plants configured for this customer —'}</option>
+                          {plants.map((p: any) => (
+                            <option key={p.id} value={p.name}>{p.name}</option>
+                          ))}
                         </select>
                       : <p className="text-sm text-gray-900 mt-1">{record.plant}</p>
                     }

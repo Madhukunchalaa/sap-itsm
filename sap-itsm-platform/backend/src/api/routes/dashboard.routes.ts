@@ -7,10 +7,10 @@ import { resolveAgent, resolveManagedCustomerIds } from './scopeHelpers';
 
 const router = Router();
 router.use(verifyJWT, enforceTenantScope);
-router.use(enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENT', 'PROJECT_MANAGER', 'USER'));
+router.use(enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENT', 'PROJECT_MANAGER', 'USER', 'PLANT_MANAGER'));
 
 function emptyDashboard() {
-  return { summary: { totalOpen: 0, newToday: 0, p1Open: 0, slaBreaches: 0 }, byStatus: [], byPriority: [], byType: [], recentRecords: [], agentWorkload: [], monthlyTrend: [], generatedAt: new Date() };
+  return { summary: { totalOpen: 0, newToday: 0, p1Open: 0, slaBreaches: 0, resolvedToday: 0, inUatCount: 0 }, byStatus: [], byPriority: [], byType: [], recentRecords: [], agentWorkload: [], monthlyTrend: [], generatedAt: new Date() };
 }
 
 // Helper: build scoped where clause based on role
@@ -35,6 +35,12 @@ async function buildScopeWhere(req: any): Promise<{ where: any; cacheKey: string
       const ids = await resolveManagedCustomerIds(agent.id, tenantId);
       if (ids.length > 0) result = { where: { tenantId, customerId: { in: ids } }, cacheKey: `dash:pm:${agent.id}` };
     }
+  } else if (role === 'PLANT_MANAGER') {
+    const plant = req.user!.plant;
+    if (customerId && plant) {
+      result = { where: { tenantId, customerId, plant }, cacheKey: `dash:plm:${customerId}:${plant}` };
+    }
+    return result; // plant is fixed for this role — skip the generic ?plant= override below
   }
 
   if (result && req.query.plant) {
@@ -57,11 +63,13 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    const [totalOpen, newToday, p1Open, slaBreaches, byStatus, byPriority, byType, recentRecords, byPlant, byModuleRaw] = await Promise.all([
+    const [totalOpen, newToday, p1Open, slaBreaches, resolvedToday, inUatCount, byStatus, byPriority, byType, recentRecords, byPlant, byModuleRaw] = await Promise.all([
       prisma.iTSMRecord.count({ where: { ...baseWhere, status: { in: ['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING'] as RecordStatus[] } } }),
       prisma.iTSMRecord.count({ where: { ...baseWhere, createdAt: { gte: today } } }),
       prisma.iTSMRecord.count({ where: { ...baseWhere, priority: 'P1', status: { notIn: ['RESOLVED', 'CLOSED', 'CANCELLED'] } } }),
       prisma.sLATracking.count({ where: { AND: [{ record: baseWhere }, { OR: [{ breachResponse: true }, { breachResolution: true }] }] } }).catch(() => 0),
+      prisma.iTSMRecord.count({ where: { ...baseWhere, status: { in: ['RESOLVED', 'CLOSED'] as RecordStatus[] }, resolvedAt: { gte: today } } }),
+      prisma.iTSMRecord.count({ where: { ...baseWhere, status: 'IN_UAT' as RecordStatus } }),
       prisma.iTSMRecord.groupBy({ by: ['status'], where: baseWhere, _count: true }),
       prisma.iTSMRecord.groupBy({ by: ['priority'], where: { ...baseWhere, status: { notIn: ['RESOLVED', 'CLOSED', 'CANCELLED'] } }, _count: true }),
       prisma.iTSMRecord.groupBy({ by: ['recordType'], where: { ...baseWhere, status: { notIn: ['RESOLVED', 'CLOSED', 'CANCELLED'] } }, _count: true }),
@@ -74,7 +82,15 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
         },
         orderBy: { createdAt: 'desc' }, take: 10,
       }),
-      (prisma.iTSMRecord.groupBy as any)({ by: ['plant'], where: { ...baseWhere, plant: { not: null } }, _count: true }),
+      // Only widen to "any plant" when the scope hasn't already pinned one —
+      // spreading baseWhere.plant (a string, e.g. PLANT_MANAGER/?plant=) and
+      // then unconditionally overwriting it with `{ not: null }` used to leak
+      // other plants' counts into this breakdown.
+      (prisma.iTSMRecord.groupBy as any)({
+        by: ['plant'],
+        where: typeof baseWhere.plant === 'string' ? baseWhere : { ...baseWhere, plant: { not: null } },
+        _count: true,
+      }),
       (prisma.iTSMRecord.groupBy as any)({ by: ['sapModuleId'], where: { ...baseWhere, sapModuleId: { not: null } }, _count: true }),
     ]);
 
@@ -84,7 +100,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const mods = modIds.length > 0 ? await prisma.sAPModuleMaster.findMany({ where: { id: { in: modIds } }, select: { id: true, code: true } }) : [];
 
     const dashboard = {
-      summary: { totalOpen, newToday, p1Open, slaBreaches },
+      summary: { totalOpen, newToday, p1Open, slaBreaches, resolvedToday, inUatCount },
       byStatus: byStatus.map((s: any) => ({ status: s.status, count: s._count })),
       byPriority: byPriority.map((p: any) => ({ priority: p.priority, count: p._count })),
       byType: byType.map((t: any) => ({ type: t.recordType, count: t._count })),

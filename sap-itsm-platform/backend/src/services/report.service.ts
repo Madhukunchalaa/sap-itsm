@@ -126,13 +126,15 @@ function buildNarrative(r: Omit<OverallReport, 'narrative'>): string {
 export async function generateOverallReport(
   tenantId: string,
   period: ReportPeriod = 'week',
-  customerIds?: string[]
+  customerIds?: string[],
+  plant?: string
 ): Promise<OverallReport> {
   const { from, to, previousFrom, previousTo } = periodWindow(period);
 
   const scope: Prisma.ITSMRecordWhereInput = {
     tenantId,
     ...(customerIds?.length ? { customerId: { in: customerIds } } : {}),
+    ...(plant ? { plant } : {}),
   };
   const createdInWindow: Prisma.ITSMRecordWhereInput = { ...scope, createdAt: { gte: from, lt: to } };
   const resolvedInWindow: Prisma.ITSMRecordWhereInput = { ...scope, resolvedAt: { gte: from, lt: to } };
@@ -251,18 +253,18 @@ export async function generateOverallReport(
   return { ...base, narrative: buildNarrative(base) };
 }
 
-export async function generateDailyStatusReport(tenantId: string): Promise<DailyStatusReport> {
+export async function generateDailyStatusReport(tenantId: string, customerId?: string, plant?: string): Promise<DailyStatusReport> {
   const now = new Date();
-  
+
   // Start of today (00:00:00)
   const todayStart = new Date(now);
   todayStart.setHours(0, 0, 0, 0);
-  
+
   // End of today (23:59:59.999)
   const todayEnd = new Date(now);
   todayEnd.setHours(23, 59, 59, 999);
 
-  const scope: Prisma.ITSMRecordWhereInput = { tenantId };
+  const scope: Prisma.ITSMRecordWhereInput = { tenantId, ...(customerId ? { customerId } : {}), ...(plant ? { plant } : {}) };
 
   const [
     totalResolved,

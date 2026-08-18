@@ -221,11 +221,24 @@ export const sapModulesApi = {
   seed: () => apiClient.post('/sap-modules/seed'),
 };
 
-export const plantHeadEmailsApi = {
-  list: () => apiClient.get('/plant-head-emails'),
-  create: (data: object) => apiClient.post('/plant-head-emails', data),
-  update: (id: string, data: object) => apiClient.patch(`/plant-head-emails/${id}`, data),
-  delete: (id: string) => apiClient.delete(`/plant-head-emails/${id}`),
+export const plantsApi = {
+  list: (activeOnly = false) => apiClient.get('/plants', { params: activeOnly ? { activeOnly: 'true' } : {} }),
+  byCustomer: (customerId: string) => apiClient.get(`/plants/by-customer/${customerId}`),
+  create: (data: object) => apiClient.post('/plants', data),
+  update: (id: string, data: object) => apiClient.patch(`/plants/${id}`, data),
+  delete: (id: string) => apiClient.delete(`/plants/${id}`),
+};
+
+export const statusHistoryApi = {
+  list: (params?: object) => apiClient.get('/status-history', { params }),
+  export: (params?: object) => apiClient.get('/status-history/export', { params, responseType: 'blob' }),
+};
+
+export const reportSubscriptionsApi = {
+  list: () => apiClient.get('/report-subscriptions'),
+  create: (data: object) => apiClient.post('/report-subscriptions', data),
+  update: (id: string, data: object) => apiClient.patch(`/report-subscriptions/${id}`, data),
+  delete: (id: string) => apiClient.delete(`/report-subscriptions/${id}`),
 };
 
 export const assignmentRulesApi = {
