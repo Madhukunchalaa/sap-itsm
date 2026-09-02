@@ -40,6 +40,8 @@ export interface RecordFilters {
   sortOrder?: 'asc' | 'desc';
   from?: string;
   to?: string;
+  targetDateFrom?: string;
+  targetDateTo?: string;
 }
 
 // ── Chat / AI Assistant API ──────────────────────────────────

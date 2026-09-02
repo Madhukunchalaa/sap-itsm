@@ -53,6 +53,8 @@ export interface ListRecordsInput {
   sortOrder?: 'asc' | 'desc';
   from?: string;
   to?: string;
+  targetDateFrom?: string;
+  targetDateTo?: string;
   userOrModulesFilter?: { createdById: string; customerId: string; sapModuleId: string };
 }
 
@@ -329,6 +331,15 @@ export async function listRecords(input: ListRecordsInput) {
       createdAt: {
         ...(input.from && { gte: new Date(input.from) }),
         ...(input.to   && { lte: new Date(input.to) }),
+      },
+    });
+  }
+
+  if (input.targetDateFrom || input.targetDateTo) {
+    andConditions.push({
+      targetDate: {
+        ...(input.targetDateFrom && { gte: new Date(input.targetDateFrom) }),
+        ...(input.targetDateTo   && { lte: new Date(input.targetDateTo) }),
       },
     });
   }

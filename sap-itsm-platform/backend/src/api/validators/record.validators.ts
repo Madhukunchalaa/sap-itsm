@@ -26,7 +26,7 @@ export const updateRecordSchema = z.object({
     description: z.string().min(10).max(10000).optional(),
     priority: z.enum(['P1', 'P2', 'P3', 'P4']).optional(),
     status: z
-      .enum(['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED', 'CANCELLED', 'AWAITING_CUSTOMER', 'WITH_SAP', 'IN_UAT', 'HOLD', 'MOVED_TO_QUALITY', 'MOVED_TO_PRODUCTION', 'REOPEN'])
+      .enum(['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED', 'CANCELLED', 'AWAITING_CUSTOMER', 'WITH_SAP', 'IN_UAT', 'HOLD', 'DEVELOPMENT_COMPLETED', 'MOVED_TO_QUALITY', 'MOVED_TO_PRODUCTION', 'REOPEN'])
       .optional(),
     assignedAgentId: z.string().uuid().nullable().optional(),
     ciId: z.string().uuid().nullable().optional(),
@@ -54,8 +54,8 @@ export const listRecordsSchema = z.object({
       .optional(),
     status: z
       .union([
-        z.enum(['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED', 'CANCELLED', 'AWAITING_CUSTOMER', 'WITH_SAP', 'IN_UAT', 'HOLD', 'MOVED_TO_QUALITY', 'MOVED_TO_PRODUCTION', 'REOPEN']),
-        z.array(z.enum(['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED', 'CANCELLED', 'AWAITING_CUSTOMER', 'WITH_SAP', 'IN_UAT', 'HOLD', 'MOVED_TO_QUALITY', 'MOVED_TO_PRODUCTION', 'REOPEN'])),
+        z.enum(['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED', 'CANCELLED', 'AWAITING_CUSTOMER', 'WITH_SAP', 'IN_UAT', 'HOLD', 'DEVELOPMENT_COMPLETED', 'MOVED_TO_QUALITY', 'MOVED_TO_PRODUCTION', 'REOPEN']),
+        z.array(z.enum(['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED', 'CANCELLED', 'AWAITING_CUSTOMER', 'WITH_SAP', 'IN_UAT', 'HOLD', 'DEVELOPMENT_COMPLETED', 'MOVED_TO_QUALITY', 'MOVED_TO_PRODUCTION', 'REOPEN'])),
       ])
       .optional(),
     priority: z
@@ -86,6 +86,8 @@ export const listRecordsSchema = z.object({
     sortOrder: z.enum(['asc', 'desc']).default('desc'),
     from: z.string().datetime().optional(),
     to: z.string().datetime().optional(),
+    targetDateFrom: z.string().datetime().optional(),
+    targetDateTo: z.string().datetime().optional(),
   }),
 });
 

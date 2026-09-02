@@ -47,6 +47,8 @@ function parseDateFilters(q: any) {
     from: q.from ? new Date(q.from) : undefined,
     to: q.to ? new Date(q.to) : undefined,
     recordId: q.recordId || undefined,
+    assignedAgentId: q.assignedAgentId || undefined,
+    changedById: q.changedById || undefined,
   };
 }
 

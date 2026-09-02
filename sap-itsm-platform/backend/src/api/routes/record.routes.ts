@@ -227,6 +227,8 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
       sortOrder:       q.sortOrder,
       from:            q.from,
       to:              q.to,
+      targetDateFrom:  q.targetDateFrom,
+      targetDateTo:    q.targetDateTo,
     });
 
     res.json({ success: true, ...result });

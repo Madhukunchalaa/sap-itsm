@@ -10,7 +10,7 @@ router.use(verifyJWT, enforceTenantScope);
 router.use(enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENT', 'PROJECT_MANAGER', 'USER', 'PLANT_MANAGER'));
 
 function emptyDashboard() {
-  return { summary: { totalOpen: 0, newToday: 0, p1Open: 0, slaBreaches: 0, resolvedToday: 0, inUatCount: 0 }, byStatus: [], byPriority: [], byType: [], recentRecords: [], agentWorkload: [], monthlyTrend: [], generatedAt: new Date() };
+  return { summary: { totalOpen: 0, newToday: 0, p1Open: 0, slaBreaches: 0, resolvedToday: 0, inUatCount: 0, inUatToday: 0 }, byStatus: [], byPriority: [], byType: [], recentRecords: [], agentWorkload: [], monthlyTrend: [], generatedAt: new Date() };
 }
 
 // Helper: build scoped where clause based on role
@@ -63,13 +63,26 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    const [totalOpen, newToday, p1Open, slaBreaches, resolvedToday, inUatCount, byStatus, byPriority, byType, recentRecords, byPlant, byModuleRaw] = await Promise.all([
+    const [totalOpen, newToday, p1Open, slaBreaches, resolvedToday, inUatCount, inUatToday, byStatus, byPriority, byType, recentRecords, byPlant, byModuleRaw] = await Promise.all([
       prisma.iTSMRecord.count({ where: { ...baseWhere, status: { in: ['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING'] as RecordStatus[] } } }),
       prisma.iTSMRecord.count({ where: { ...baseWhere, createdAt: { gte: today } } }),
       prisma.iTSMRecord.count({ where: { ...baseWhere, priority: 'P1', status: { notIn: ['RESOLVED', 'CLOSED', 'CANCELLED'] } } }),
       prisma.sLATracking.count({ where: { AND: [{ record: baseWhere }, { OR: [{ breachResponse: true }, { breachResolution: true }] }] } }).catch(() => 0),
       prisma.iTSMRecord.count({ where: { ...baseWhere, status: { in: ['RESOLVED', 'CLOSED'] as RecordStatus[] }, resolvedAt: { gte: today } } }),
       prisma.iTSMRecord.count({ where: { ...baseWhere, status: 'IN_UAT' as RecordStatus } }),
+      // Tickets that MOVED INTO In UAT today (distinct from inUatCount, which
+      // is the current total sitting in that status regardless of when).
+      // Sourced from AuditLog since ITSMRecord has no dedicated "enteredUatAt".
+      prisma.auditLog.count({
+        where: {
+          tenantId: req.user!.tenantId,
+          action: 'STATUS_CHANGE',
+          entityType: 'ITSMRecord',
+          createdAt: { gte: today },
+          newValues: { path: ['status'], equals: 'IN_UAT' },
+          record: baseWhere,
+        },
+      }).catch(() => 0),
       prisma.iTSMRecord.groupBy({ by: ['status'], where: baseWhere, _count: true }),
       prisma.iTSMRecord.groupBy({ by: ['priority'], where: { ...baseWhere, status: { notIn: ['RESOLVED', 'CLOSED', 'CANCELLED'] } }, _count: true }),
       prisma.iTSMRecord.groupBy({ by: ['recordType'], where: { ...baseWhere, status: { notIn: ['RESOLVED', 'CLOSED', 'CANCELLED'] } }, _count: true }),
@@ -100,7 +113,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const mods = modIds.length > 0 ? await prisma.sAPModuleMaster.findMany({ where: { id: { in: modIds } }, select: { id: true, code: true } }) : [];
 
     const dashboard = {
-      summary: { totalOpen, newToday, p1Open, slaBreaches, resolvedToday, inUatCount },
+      summary: { totalOpen, newToday, p1Open, slaBreaches, resolvedToday, inUatCount, inUatToday },
       byStatus: byStatus.map((s: any) => ({ status: s.status, count: s._count })),
       byPriority: byPriority.map((p: any) => ({ priority: p.priority, count: p._count })),
       byType: byType.map((t: any) => ({ type: t.recordType, count: t._count })),

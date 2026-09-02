@@ -26,6 +26,7 @@ const STATUS_OPTIONS: MultiSelectOption[] = [
   { value: 'WITH_SAP',          label: 'With SAP' },
   { value: 'IN_UAT',            label: 'In UAT' },
   { value: 'HOLD',              label: 'Hold' },
+  { value: 'DEVELOPMENT_COMPLETED', label: 'Development Completed' },
   { value: 'MOVED_TO_QUALITY',  label: 'Moved to Quality' },
   { value: 'MOVED_TO_PRODUCTION', label: 'Moved to Production' },
   { value: 'RESOLVED',          label: 'Resolved' },
@@ -42,6 +43,7 @@ const STATUS_COLORS: Record<string, string> = {
   WITH_SAP:          'bg-cyan-600 border-cyan-600',
   IN_UAT:            'bg-teal-600 border-teal-600',
   HOLD:              'bg-pink-600 border-pink-600',
+  DEVELOPMENT_COMPLETED: 'bg-violet-600 border-violet-600',
   MOVED_TO_QUALITY:  'bg-sky-600 border-sky-600',
   MOVED_TO_PRODUCTION: 'bg-lime-600 border-lime-600',
   RESOLVED:          'bg-green-600 border-green-600',
@@ -208,7 +210,8 @@ export default function RecordsPage() {
     (selCustomer        ? 1 : 0) +
     (selAgent.length    > 0 ? 1 : 0) +
     (selCreator         ? 1 : 0) +
-    (filters.from || filters.to ? 1 : 0);
+    (filters.from || filters.to ? 1 : 0) +
+    (filters.targetDateFrom || filters.targetDateTo ? 1 : 0);
 
   // ── Date range / Month-Year filter ──────────────────────────
   // Both controls just write filters.from/to (ISO datetimes) — the month
@@ -242,6 +245,17 @@ export default function RecordsPage() {
     setFilters({ from: from.toISOString(), to: to.toISOString(), page: 1 });
   };
   const clearDateFilters = () => setFilters({ from: undefined, to: undefined, page: 1 });
+
+  // ── Target Date range filter ────────────────────────────────
+  const targetDateFromValue = filters.targetDateFrom ? format(new Date(filters.targetDateFrom), 'yyyy-MM-dd') : '';
+  const targetDateToValue = filters.targetDateTo ? format(new Date(filters.targetDateTo), 'yyyy-MM-dd') : '';
+  const handleTargetDateFromChange = (value: string) => {
+    setFilters({ targetDateFrom: value ? new Date(`${value}T00:00:00`).toISOString() : undefined, page: 1 });
+  };
+  const handleTargetDateToChange = (value: string) => {
+    setFilters({ targetDateTo: value ? new Date(`${value}T23:59:59.999`).toISOString() : undefined, page: 1 });
+  };
+  const clearTargetDateFilters = () => setFilters({ targetDateFrom: undefined, targetDateTo: undefined, page: 1 });
 
   const handleExportExcel = async () => {
     let records = data?.data || [];
@@ -766,6 +780,24 @@ export default function RecordsPage() {
           {(filters.from || filters.to) && (
             <button onClick={clearDateFilters} className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-100">
               Clear dates
+            </button>
+          )}
+          <div className="w-full border-t border-gray-200 my-1"/>
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1.5 block">Target Date From</label>
+            <input type="date" value={targetDateFromValue} onChange={(e) => handleTargetDateFromChange(e.target.value)}
+              max={targetDateToValue || undefined}
+              className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"/>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1.5 block">Target Date To</label>
+            <input type="date" value={targetDateToValue} onChange={(e) => handleTargetDateToChange(e.target.value)}
+              min={targetDateFromValue || undefined}
+              className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"/>
+          </div>
+          {(filters.targetDateFrom || filters.targetDateTo) && (
+            <button onClick={clearTargetDateFilters} className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-100">
+              Clear target dates
             </button>
           )}
         </div>

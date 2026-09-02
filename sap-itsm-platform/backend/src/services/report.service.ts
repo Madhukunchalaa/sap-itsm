@@ -10,7 +10,7 @@ import { prisma } from '../config/database';
 // ─────────────────────────────────────────────────────────────
 
 const OPEN_STATUSES: RecordStatus[] = [
-  'NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'AWAITING_CUSTOMER', 'WITH_SAP', 'IN_UAT', 'HOLD', 'MOVED_TO_QUALITY', 'MOVED_TO_PRODUCTION', 'REOPEN',
+  'NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'AWAITING_CUSTOMER', 'WITH_SAP', 'IN_UAT', 'HOLD', 'DEVELOPMENT_COMPLETED', 'MOVED_TO_QUALITY', 'MOVED_TO_PRODUCTION', 'REOPEN',
 ];
 
 export type ReportPeriod = 'week' | 'month';

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { statusHistoryApi, customersApi, plantsApi } from '../api/services';
+import { statusHistoryApi, customersApi, plantsApi, agentsApi, usersApi } from '../api/services';
 import { PageHeader, Button } from '../components/ui/Forms';
 import { useAuthStore } from '../store/auth.store';
 import { getErrorMessage } from '../api/client';
@@ -24,13 +24,31 @@ export default function StatusHistoryPage() {
   const { user } = useAuthStore();
   const showCustomerFilter = ['SUPER_ADMIN', 'PROJECT_MANAGER'].includes(user?.role || '');
   const showPlantFilter = ['SUPER_ADMIN', 'PROJECT_MANAGER', 'COMPANY_ADMIN'].includes(user?.role || '');
+  // "Changed By" needs GET /users, which is gated to SUPER_ADMIN/COMPANY_ADMIN/PROJECT_MANAGER —
+  // Plant Manager would just get a 403, so skip fetching it for that role.
+  const showUserFilter = user?.role !== 'PLANT_MANAGER';
 
   const [page, setPage] = useState(1);
   const [customerId, setCustomerId] = useState('');
   const [plant, setPlant] = useState('');
+  const [assignedAgentId, setAssignedAgentId] = useState('');
+  const [changedById, setChangedById] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [exporting, setExporting] = useState(false);
+
+  const { data: agentsData } = useQuery({
+    queryKey: ['agents-list-sh'],
+    queryFn: () => agentsApi.list({ limit: 200 }).then(r => r.data.data || []),
+  });
+  const agents: any[] = agentsData || [];
+
+  const { data: usersData } = useQuery({
+    queryKey: ['users-list-sh'],
+    queryFn: () => usersApi.list({ limit: 500 }).then(r => r.data.data || []),
+    enabled: showUserFilter,
+  });
+  const changedByUsers: any[] = usersData || [];
 
   const { data: customersData } = useQuery({
     queryKey: ['customers-list-sh'],
@@ -50,6 +68,8 @@ export default function StatusHistoryPage() {
   const filters: Record<string, string> = {
     ...(customerId && { customerId }),
     ...(plant && { plant }),
+    ...(assignedAgentId && { assignedAgentId }),
+    ...(changedById && { changedById }),
     ...(from && { from: new Date(`${from}T00:00:00`).toISOString() }),
     ...(to && { to: new Date(`${to}T23:59:59.999`).toISOString() }),
   };
@@ -105,6 +125,18 @@ export default function StatusHistoryPage() {
             {plants.map((p: any) => <option key={p.id} value={p.name}>{p.name}</option>)}
           </select>
         )}
+        <select value={assignedAgentId} onChange={e => { setAssignedAgentId(e.target.value); setPage(1); }}
+          className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white min-w-[160px]">
+          <option value="">All Agents</option>
+          {agents.map((a: any) => <option key={a.id} value={a.id}>{a.user?.firstName} {a.user?.lastName}</option>)}
+        </select>
+        {showUserFilter && (
+          <select value={changedById} onChange={e => { setChangedById(e.target.value); setPage(1); }}
+            className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white min-w-[160px]">
+            <option value="">All Users (Changed By)</option>
+            {changedByUsers.map((u: any) => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
+          </select>
+        )}
         <div className="flex items-center gap-2">
           <label className="text-xs text-gray-500">From</label>
           <input type="date" value={from} onChange={e => { setFrom(e.target.value); setPage(1); }}
@@ -115,8 +147,8 @@ export default function StatusHistoryPage() {
           <input type="date" value={to} onChange={e => { setTo(e.target.value); setPage(1); }}
             className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"/>
         </div>
-        {(from || to || plant || customerId) && (
-          <button onClick={() => { setFrom(''); setTo(''); setPlant(''); setCustomerId(''); setPage(1); }}
+        {(from || to || plant || customerId || assignedAgentId || changedById) && (
+          <button onClick={() => { setFrom(''); setTo(''); setPlant(''); setCustomerId(''); setAssignedAgentId(''); setChangedById(''); setPage(1); }}
             className="text-xs text-gray-400 hover:text-gray-600 underline">Clear filters</button>
         )}
         <span className="text-xs text-gray-400 ml-auto">Page {page} of {totalPages || 1}</span>

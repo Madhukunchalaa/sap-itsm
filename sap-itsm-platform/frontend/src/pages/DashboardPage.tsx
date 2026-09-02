@@ -106,7 +106,7 @@ function AdminDashboard() {
       />
 
       {/* ── KPI Cards ─────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-7 gap-4">
         <StatCard
           label="Open Tickets"
           value={d?.summary?.totalOpen ?? 0}
@@ -148,6 +148,13 @@ function AdminDashboard() {
           sub="Currently in UAT"
           icon={<FlaskConical className="w-6 h-6" />}
           color="blue"
+        />
+        <StatCard
+          label="In UAT Today"
+          value={d?.summary?.inUatToday ?? 0}
+          sub="Moved to UAT since midnight"
+          icon={<FlaskConical className="w-6 h-6" />}
+          color="purple"
         />
       </div>
 

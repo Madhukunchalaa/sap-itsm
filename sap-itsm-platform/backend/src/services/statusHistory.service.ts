@@ -11,6 +11,8 @@ export interface StatusHistoryFilters {
   customerIdIn?: string[];
   plant?: string;
   recordId?: string;
+  assignedAgentId?: string;
+  changedById?: string;
   from?: Date;
   to?: Date;
   page?: number;
@@ -43,6 +45,7 @@ function buildWhere(tenantId: string, f: StatusHistoryFilters) {
     action: 'STATUS_CHANGE' as const,
     entityType: 'ITSMRecord',
     ...(f.recordId && { recordId: f.recordId }),
+    ...(f.changedById && { userId: f.changedById }),
     ...((f.from || f.to) && {
       createdAt: {
         ...(f.from && { gte: f.from }),
@@ -53,6 +56,7 @@ function buildWhere(tenantId: string, f: StatusHistoryFilters) {
       ...(f.customerId && { customerId: f.customerId }),
       ...(f.customerIdIn && { customerId: { in: f.customerIdIn } }),
       ...(f.plant && { plant: f.plant }),
+      ...(f.assignedAgentId && { assignedAgentId: f.assignedAgentId }),
     },
   };
 }

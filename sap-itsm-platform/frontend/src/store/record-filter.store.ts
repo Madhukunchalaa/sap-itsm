@@ -11,6 +11,8 @@ interface RecordFilterState {
     sortOrder: 'asc' | 'desc';
     from?: string;
     to?: string;
+    targetDateFrom?: string;
+    targetDateTo?: string;
   };
   
   // Multi-select and specialized filters
