@@ -4,7 +4,7 @@ export const createRecordSchema = z.object({
   body: z.object({
     recordType: z.enum(['INCIDENT', 'REQUEST', 'PROBLEM', 'CHANGE']),
     title: z.string().min(5).max(500),
-    description: z.string().min(10).max(10000),
+    description: z.string().min(10).max(10000000),
     priority: z.enum(['P1', 'P2', 'P3', 'P4']).default('P3'),
     customerId: z.string().uuid().optional(),
     contractId: z.string().uuid().optional(),
@@ -23,7 +23,7 @@ export const updateRecordSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
   body: z.object({
     title: z.string().min(5).max(500).optional(),
-    description: z.string().min(10).max(10000).optional(),
+    description: z.string().min(10).max(10000000).optional(),
     priority: z.enum(['P1', 'P2', 'P3', 'P4']).optional(),
     status: z
       .enum(['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED', 'CANCELLED', 'AWAITING_CUSTOMER', 'WITH_SAP', 'IN_UAT', 'HOLD', 'MOVED_TO_QUALITY', 'MOVED_TO_PRODUCTION', 'REOPEN'])
@@ -93,7 +93,7 @@ export const listRecordsSchema = z.object({
 export const addCommentSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
   body: z.object({
-    text: z.string().min(1).max(5000),
+    text: z.string().min(1).max(10000000), // Allow large base64 screenshots in comments
     internalFlag: z.boolean().default(false),
   }),
 });
