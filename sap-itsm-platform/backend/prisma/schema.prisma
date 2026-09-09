@@ -64,6 +64,7 @@ model User {
   refreshTokens       RefreshToken[]
   approvedTimeEntries TimeEntry[]              @relation("ApprovedBy")
   customer            Customer?                @relation("CustomerUsers", fields: [customerId], references: [id])
+  customerUsers       CustomerUser[]
   tenant              Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   sapModuleId         String?                  @map("sap_module_id")
   sapModule           SAPModuleMaster?         @relation(fields: [sapModuleId], references: [id])
@@ -183,6 +184,7 @@ model Customer {
   records               ITSMRecord[]
   notificationRules     NotificationRule[]
   users                 User[]              @relation("CustomerUsers")
+  customerUsers         CustomerUser[]
   plants                Plant[]
   reportSubscriptions   ReportSubscription[]
 
@@ -221,6 +223,17 @@ model CustomerAgent {
 
   @@id([customerId, agentId])
   @@map("customer_agents")
+}
+
+model CustomerUser {
+  userId     String   @map("user_id")
+  customerId String   @map("customer_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@id([userId, customerId])
+  @@map("customer_users")
 }
 
 model CustomerProjectManager {

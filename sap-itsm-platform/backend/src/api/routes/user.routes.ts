@@ -21,6 +21,7 @@ const createUserSchema = z.object({
     role: z.enum(['SUPER_ADMIN', 'COMPANY_ADMIN', 'USER', 'AGENT', 'PROJECT_MANAGER', 'PLANT_MANAGER']),
     sapModuleId: z.string().uuid().optional(),
     customerId: z.string().uuid().optional(),
+    customerIds: z.array(z.string().uuid()).optional(),
     plant: z.string().optional(),
   }),
 });
@@ -81,6 +82,7 @@ router.get('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'), 
           role: true, status: true, lastLoginAt: true, createdAt: true,
           customerId: true, sapModuleId: true, canRunSapAnalysis: true, plant: true,
           customer: { select: { id: true, companyName: true } },
+          customerUsers: { select: { customer: { select: { id: true, companyName: true } } } },
           sapModule: { select: { id: true, name: true, code: true } },
           agent: { select: { id: true, level: true, status: true } },
           _count: { select: { createdRecords: true } },
@@ -97,15 +99,17 @@ router.get('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'), 
 // POST /users
 router.post('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'), validate(createUserSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { email, password, firstName, lastName, role, customerId, sapModuleId, plant } = req.body;
+    const { email, password, firstName, lastName, role, customerId, customerIds, sapModuleId, plant } = req.body;
 
-    if (role === 'PLANT_MANAGER' && (!customerId || !plant)) {
+    const primaryCustomerId = (Array.isArray(customerIds) && customerIds.length > 0) ? customerIds[0] : (customerId || undefined);
+
+    if (role === 'PLANT_MANAGER' && (!primaryCustomerId || !plant)) {
       res.status(400).json({ success: false, error: 'Plant Manager accounts require both a Customer and a Plant' });
       return;
     }
 
     // Domain validation: if customer has allowedDomains, validate email domain
-    const resolvedCustomerId = customerId || req.user!.customerId;
+    const resolvedCustomerId = primaryCustomerId || req.user!.customerId;
     if (resolvedCustomerId) {
       const customer = await prisma.customer.findUnique({
         where: { id: resolvedCustomerId },
@@ -131,12 +135,19 @@ router.post('/', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'),
         passwordHash, firstName, lastName, role,
         tenantId:   req.user!.tenantId,
         status:     'ACTIVE',
-        customerId: customerId || undefined,
+        customerId: primaryCustomerId || undefined,
         sapModuleId: sapModuleId || undefined,
         plant: plant || undefined,
       },
       select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true, createdAt: true },
     });
+
+    if (Array.isArray(customerIds) && customerIds.length > 0) {
+      await prisma.customerUser.createMany({
+        data: customerIds.map((cId: string) => ({ userId: user.id, customerId: cId })),
+        skipDuplicates: true,
+      });
+    }
 
     await auditLog({ ...auditFromRequest(req), action: 'CREATE', entityType: 'User', entityId: user.id, newValues: { email, role } });
     res.status(201).json({ success: true, user });
@@ -152,6 +163,7 @@ router.get('/:id', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER'
         id: true, email: true, firstName: true, lastName: true,
         role: true, status: true, lastLoginAt: true, createdAt: true, customerId: true, plant: true,
         customer: { select: { id: true, companyName: true } },
+        customerUsers: { select: { customer: { select: { id: true, companyName: true } } } },
       },
     });
     if (!user) { res.status(404).json({ success: false, error: 'User not found' }); return; }
@@ -188,8 +200,12 @@ router.patch('/:id', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGE
         data[k] = req.body[k] === '' ? null : req.body[k];
       }
     }
-    // "Perform AI Analysis" access is a sensitive grant — only Super Admin can toggle it,
-    // even though Company Admin/PM can edit other fields on this same endpoint.
+
+    if (Array.isArray(req.body.customerIds)) {
+      data.customerId = req.body.customerIds.length > 0 ? req.body.customerIds[0] : null;
+    }
+
+    // "Perform AI Analysis" access is a sensitive grant — only Super Admin can toggle it
     if (req.body.canRunSapAnalysis !== undefined) {
       if (req.user!.role !== 'SUPER_ADMIN') {
         res.status(403).json({ success: false, error: 'Only Super Admin can change AI Analysis access' });
@@ -200,6 +216,15 @@ router.patch('/:id', enforceRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGE
     if (data.email) data.email = (data.email as string).toLowerCase().trim();
     if (req.body.password) {
       (data as any).passwordHash = await bcrypt.hash(req.body.password, bcryptRounds);
+    }
+    if (Array.isArray(req.body.customerIds)) {
+      await prisma.customerUser.deleteMany({ where: { userId: req.params.id } });
+      if (req.body.customerIds.length > 0) {
+        await prisma.customerUser.createMany({
+          data: req.body.customerIds.map((cId: string) => ({ userId: req.params.id, customerId: cId })),
+          skipDuplicates: true,
+        });
+      }
     }
     await prisma.user.updateMany({
       where: { id: req.params.id, tenantId: req.user!.tenantId },

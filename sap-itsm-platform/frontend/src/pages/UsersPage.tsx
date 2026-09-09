@@ -47,7 +47,7 @@ export default function UsersPage() {
   });
   const customersList: any[] = modalCustomers || [];
 
-  const defaultForm = { email:'', password:'', firstName:'', lastName:'', role: 'USER', status:'ACTIVE', customerId:'', sapModuleId:'', plant:'' };
+  const defaultForm = { email:'', password:'', firstName:'', lastName:'', role: 'USER', status:'ACTIVE', customerId:'', customerIds: [] as string[], sapModuleId:'', plant:'' };
   const [form, setForm] = useState(defaultForm);
 
   // Plants for the currently-selected customer (Plant Manager form field)
@@ -65,9 +65,14 @@ export default function UsersPage() {
   };
 
   const handleEdit = (u: any) => {
+    const assignedCustomerIds = u.customerUsers?.map((cu: any) => cu.customer?.id || cu.customerId).filter(Boolean) || [];
+    const initialCustomerIds = assignedCustomerIds.length > 0 ? assignedCustomerIds : (u.customerId ? [u.customerId] : []);
     setForm({
       email: u.email, password:'', firstName: u.firstName, lastName: u.lastName,
-      role: u.role, status: u.status, customerId: u.customerId || '', sapModuleId: u.sapModuleId || '',
+      role: u.role, status: u.status,
+      customerId: u.customerId || (initialCustomerIds[0] || ''),
+      customerIds: initialCustomerIds,
+      sapModuleId: u.sapModuleId || '',
       plant: u.plant || '',
     });
     setEditUser(u);
@@ -85,6 +90,11 @@ export default function UsersPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const selectedCustomerIds = form.role === 'COMPANY_ADMIN'
+        ? form.customerIds
+        : (form.customerId ? [form.customerId] : []);
+      const primaryCustId = selectedCustomerIds.length > 0 ? selectedCustomerIds[0] : (form.customerId || null);
+
       if (editUser) {
         await usersApi.update(editUser.id, {
           firstName: form.firstName,
@@ -92,22 +102,25 @@ export default function UsersPage() {
           email: form.email,
           role: form.role,
           status: form.status,
-          customerId: form.customerId || null,
+          customerId: primaryCustId,
+          customerIds: selectedCustomerIds,
           sapModuleId: form.sapModuleId || null,
           plant: form.plant || null,
           ...(form.password ? { password: form.password } : {}),
         });
         toast.success('User updated');
       } else {
-        // customerId/sapModuleId/plant must be OMITTED (not sent as '') when
-        // unset — the backend validates them as optional UUIDs, and an empty
-        // string fails that check even though the field itself is optional.
-        const { customerId, sapModuleId, plant, ...rest } = form;
         await usersApi.create({
-          ...rest,
-          ...(customerId ? { customerId } : {}),
-          ...(sapModuleId ? { sapModuleId } : {}),
-          ...(plant ? { plant } : {}),
+          firstName: form.firstName,
+          lastName: form.lastName,
+          email: form.email,
+          password: form.password,
+          role: form.role,
+          status: form.status,
+          ...(primaryCustId ? { customerId: primaryCustId } : {}),
+          ...(selectedCustomerIds.length > 0 ? { customerIds: selectedCustomerIds } : {}),
+          ...(form.sapModuleId ? { sapModuleId: form.sapModuleId } : {}),
+          ...(form.plant ? { plant: form.plant } : {}),
         });
         toast.success('User created');
       }
@@ -210,10 +223,15 @@ export default function UsersPage() {
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-semibold text-gray-900">{u.firstName} {u.lastName}</span>
             <RoleBadge role={u.role}/>
             <StatusDot status={u.status}/>
+            {u.customerUsers?.length > 1 && (
+              <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-200" title={u.customerUsers.map((cu: any) => cu.customer?.companyName).join(', ')}>
+                {u.customerUsers.length} Customers
+              </span>
+            )}
           </div>
           <p className="text-xs text-gray-400 truncate">{u.email}</p>
         </div>
@@ -353,15 +371,48 @@ export default function UsersPage() {
             options={roleOptions.map(r=>({value:r, label:r.replace(/_/g,' ')}))}/>
           <Select label="Status" value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}
             options={ALL_STATUSES.map(s=>({value:s, label:s}))}/>
-          {(form.role === 'COMPANY_ADMIN' || form.role === 'USER' || form.role === 'PLANT_MANAGER') && (
+          {form.role === 'COMPANY_ADMIN' ? (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Assign to Customer {(form.role === 'COMPANY_ADMIN' || form.role === 'PLANT_MANAGER') && <span className="text-red-500">*</span>}
+                Assign to Customers <span className="text-red-500">*</span>
               </label>
-              <select value={form.customerId} onChange={e=>setForm(f=>({...f,customerId:e.target.value, plant:''}))}
+              <div className="border border-gray-300 rounded-xl p-3 max-h-48 overflow-y-auto space-y-1.5 bg-white">
+                {customersList.map((cu: any) => {
+                  const isChecked = form.customerIds.includes(cu.id);
+                  return (
+                    <label key={cu.id} className="flex items-center gap-2.5 text-sm text-gray-700 hover:bg-gray-50 p-1.5 rounded-lg cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          const nextIds = e.target.checked
+                            ? [...form.customerIds, cu.id]
+                            : form.customerIds.filter(id => id !== cu.id);
+                          setForm(f => ({ ...f, customerIds: nextIds, customerId: nextIds[0] || '' }));
+                        }}
+                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="font-medium">{cu.companyName}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Select all customer accounts this Company Admin is authorized to manage and access.
+              </p>
+            </div>
+          ) : (form.role === 'USER' || form.role === 'PLANT_MANAGER') && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Assign to Customer {form.role === 'PLANT_MANAGER' && <span className="text-red-500">*</span>}
+              </label>
+              <select value={form.customerId} onChange={e => {
+                const cId = e.target.value;
+                setForm(f => ({ ...f, customerId: cId, customerIds: cId ? [cId] : [], plant: '' }));
+              }}
                 className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
                 <option value="">— None —</option>
-                {customersList.map((cu:any) => (
+                {customersList.map((cu: any) => (
                   <option key={cu.id} value={cu.id}>{cu.companyName}</option>
                 ))}
               </select>
