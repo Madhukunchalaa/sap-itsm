@@ -11,6 +11,7 @@ export interface JWTPayload {
   role: UserRole;
   email: string;
   customerId?: string | null;   // set for COMPANY_ADMIN and USER — re-fetched from DB
+  customerIds?: string[];       // all assigned customer IDs for multi-customer access
   sapModuleId?: string | null;  // SAP module restriction
   canRunSapAnalysis?: boolean;  // "Perform AI Analysis" access — re-fetched from DB
   plant?: string | null;        // PLANT_MANAGER restriction — view-only, scoped to one plant
@@ -29,7 +30,7 @@ declare global {
 
 /**
  * Verify JWT access token and attach user to request.
- * IMPORTANT: customerId is re-fetched from DB on every request
+ * IMPORTANT: customerId and customerIds are re-fetched from DB on every request
  * to prevent stale values if a user's company assignment changes.
  */
 export const verifyJWT = async (
@@ -46,10 +47,20 @@ export const verifyJWT = async (
     const token = authHeader.split(' ')[1];
     const payload = jwt.verify(token, jwtConfig.accessSecret) as JWTPayload;
 
-    // Verify user still exists and is active — also fetch fresh customerId
+    // Verify user still exists and is active — also fetch fresh customerId and assigned customerUsers
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, status: true, tenantId: true, role: true, customerId: true, sapModuleId: true, canRunSapAnalysis: true, plant: true },
+      select: {
+        id: true,
+        status: true,
+        tenantId: true,
+        role: true,
+        customerId: true,
+        sapModuleId: true,
+        canRunSapAnalysis: true,
+        plant: true,
+        customerUsers: { select: { customerId: true } },
+      },
     });
 
     if (!user) {
@@ -59,10 +70,14 @@ export const verifyJWT = async (
       throw new AppError('Account is disabled', 401, 'ACCOUNT_DISABLED');
     }
 
-    // Attach payload with fresh customerId/canRunSapAnalysis from DB (not stale JWT)
+    const assignedIds = user.customerUsers.map(cu => cu.customerId);
+    const allCustomerIds = Array.from(new Set([user.customerId, ...assignedIds].filter(Boolean) as string[]));
+
+    // Attach payload with fresh customerId/customerIds/canRunSapAnalysis from DB (not stale JWT)
     req.user = {
       ...payload,
-      customerId: user.customerId ?? null,
+      customerId: user.customerId ?? (allCustomerIds[0] || null),
+      customerIds: allCustomerIds,
       sapModuleId: user.sapModuleId ?? null,
       canRunSapAnalysis: user.canRunSapAnalysis,
       plant: user.plant ?? null,

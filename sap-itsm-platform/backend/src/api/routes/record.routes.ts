@@ -132,8 +132,20 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
 
     switch (role) {
       case 'COMPANY_ADMIN': {
-        if (!req.user!.customerId) { res.json(EMPTY); return; }
-        customerId = req.user!.customerId;
+        const ids = (req.user!.customerIds && req.user!.customerIds.length > 0)
+          ? req.user!.customerIds
+          : (req.user!.customerId ? [req.user!.customerId] : []);
+        if (ids.length === 0) { res.json(EMPTY); return; }
+        if (q.customerId) {
+          if (ids.includes(q.customerId)) {
+            customerId = q.customerId;
+          } else {
+            res.status(403).json({ success: false, error: 'Access denied to this customer' });
+            return;
+          }
+        } else {
+          customerIdIn = ids;
+        }
         if (q.createdById) createdById = q.createdById;
         break;
       }
@@ -254,7 +266,10 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     // Access check — same 5 rules
     switch (role) {
       case 'COMPANY_ADMIN': {
-        if (record.customerId !== req.user!.customerId) {
+        const ids = (req.user!.customerIds && req.user!.customerIds.length > 0)
+          ? req.user!.customerIds
+          : (req.user!.customerId ? [req.user!.customerId] : []);
+        if (!ids.includes(record.customerId)) {
           res.status(403).json({ success: false, error: 'Access denied' }); return;
         }
         break;
