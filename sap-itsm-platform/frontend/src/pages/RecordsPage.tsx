@@ -32,6 +32,7 @@ const STATUS_OPTIONS: MultiSelectOption[] = [
   { value: 'RESOLVED',          label: 'Resolved' },
   { value: 'CLOSED',            label: 'Closed' },
   { value: 'CANCELLED',         label: 'Cancelled' },
+  { value: 'REOPEN',            label: 'Reopened' },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -49,6 +50,7 @@ const STATUS_COLORS: Record<string, string> = {
   RESOLVED:          'bg-green-600 border-green-600',
   CLOSED:            'bg-gray-500 border-gray-500',
   CANCELLED:         'bg-red-500 border-red-500',
+  REOPEN:            'bg-fuchsia-600 border-fuchsia-600',
 };
 
 const TYPE_OPTIONS: MultiSelectOption[] = [
