@@ -31,6 +31,7 @@ import chatRoutes from './api/routes/chat.routes';
 import reportSubscriptionRoutes from './api/routes/reportSubscription.routes';
 import plantRoutes from './api/routes/plant.routes';
 import statusHistoryRoutes from './api/routes/statusHistory.routes';
+import statusDeckRoutes from './api/routes/statusDeck.routes';
 
 const app = express();
 
@@ -119,6 +120,7 @@ app.use('/export', exportRoutes);
 app.use('/report-subscriptions', reportSubscriptionRoutes);
 app.use('/plants', plantRoutes);
 app.use('/status-history', statusHistoryRoutes);
+app.use('/status-decks', statusDeckRoutes);
 
 // Standard Prefixed Routes
 app.use(`${API}/auth`, authRoutes);
@@ -144,6 +146,7 @@ app.use(`${API}/chat`, chatRoutes);
 app.use(`${API}/report-subscriptions`, reportSubscriptionRoutes);
 app.use(`${API}/plants`, plantRoutes);
 app.use(`${API}/status-history`, statusHistoryRoutes);
+app.use(`${API}/status-decks`, statusDeckRoutes);
 
 
 // ── Admin Endpoints (before error handlers!) ──────────────────

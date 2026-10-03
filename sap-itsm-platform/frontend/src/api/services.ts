@@ -236,6 +236,18 @@ export const statusHistoryApi = {
   export: (params?: object) => apiClient.get('/status-history/export', { params, responseType: 'blob' }),
 };
 
+export interface StatusDeckParams {
+  period: 'weekly' | 'monthly';
+  customerId: string;
+  plant?: string;
+  date?: string;
+}
+export const statusDecksApi = {
+  customers: () => apiClient.get('/status-decks/customers'),
+  preview: (params: StatusDeckParams) => apiClient.get('/status-decks/preview', { params }),
+  download: (params: StatusDeckParams) => apiClient.get('/status-decks/download', { params, responseType: 'blob' }),
+};
+
 export const reportSubscriptionsApi = {
   list: () => apiClient.get('/report-subscriptions'),
   create: (data: object) => apiClient.post('/report-subscriptions', data),
