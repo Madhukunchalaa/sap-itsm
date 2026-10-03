@@ -713,6 +713,7 @@ export default function RecordsPage() {
                 className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               >
                 <option value="">All Plants</option>
+                <option value="__NONE__">No Plant</option>
                 {plantsRaw.map((p: any) => (
                   <option key={p.id} value={p.name}>{p.name}</option>
                 ))}

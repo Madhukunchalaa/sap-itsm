@@ -279,6 +279,9 @@ export async function createRecord(input: CreateRecordInput) {
   return record;
 }
 
+// Sentinel the Records page sends as `plant` to list tickets that have no plant.
+export const NO_PLANT_FILTER = '__NONE__';
+
 export async function listRecords(input: ListRecordsInput) {
   const { skip, take } = paginate(input.page, input.limit);
 
@@ -297,10 +300,15 @@ export async function listRecords(input: ListRecordsInput) {
     ...(input.createdById      && { createdById: input.createdById }),
     ...(input.sapModuleId      && { sapModuleId: input.sapModuleId }),
     ...(input.sapModuleIdIn?.length && { sapModuleId: { in: input.sapModuleIdIn } }),
-    ...(input.plant            && { plant: input.plant }),
+    ...(input.plant && input.plant !== NO_PLANT_FILTER && { plant: input.plant }),
   };
 
   const andConditions: Prisma.ITSMRecordWhereInput[] = [];
+
+  // "No Plant" filter — tickets raised without a plant (null or blank)
+  if (input.plant === NO_PLANT_FILTER) {
+    andConditions.push({ OR: [{ plant: null }, { plant: '' }] });
+  }
 
   if (input.userOrModulesFilter) {
     andConditions.push({
