@@ -6,7 +6,6 @@ import toast from 'react-hot-toast';
 import { statusDecksApi, plantsApi, MonthlyReviewParams } from '../api/services';
 import { getErrorMessage } from '../api/client';
 import { PageHeader, Button, Select, Input } from '../components/ui/Forms';
-import { MultiSelectDropdown } from '../components/ui/MultiSelectDropdown';
 
 const thisMonth = () => format(new Date(), 'yyyy-MM');
 
@@ -58,6 +57,18 @@ export default function MonthlyReviewPage() {
 
   const moduleList: any[] = preview?.modules || [];
   const selectedIds = moduleList.filter((m) => !unticked.has(m.id)).map((m) => m.id);
+  // What the Module dropdown shows: '' = all, a module id = just that one.
+  const MULTI = '__multi__';
+  const NONE = '__none__';
+  const moduleChoice =
+    !moduleList.length || selectedIds.length === moduleList.length ? ''
+    : selectedIds.length === 0 ? NONE
+    : selectedIds.length === 1 ? selectedIds[0]
+    : MULTI;
+  const chooseModule = (value: string) => {
+    if (value === '') setUnticked(new Set());
+    else if (value !== MULTI && value !== NONE) setUnticked(new Set(moduleList.filter((m) => m.id !== value).map((m) => m.id)));
+  };
   const toggle = (id: string) => setUnticked((prev) => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -104,7 +115,7 @@ export default function MonthlyReviewPage() {
             label="Client"
             value={customerId}
             disabled={loadingCustomers}
-            onChange={(e) => { setCustomerId(e.target.value); setPlant(''); setUnticked(new Set()); }}
+            onChange={(e) => { setCustomerId(e.target.value); setPlant(''); }}
             options={[{ value: '', label: loadingCustomers ? 'Loading…' : 'Select a client' }, ...customers.map((c) => ({ value: c.id, label: c.companyName }))]}
           />
           <Select
@@ -114,18 +125,19 @@ export default function MonthlyReviewPage() {
             onChange={(e) => setPlant(e.target.value)}
             options={[{ value: '', label: 'All plants' }, ...plants.map((p: any) => ({ value: p.name, label: p.name }))]}
           />
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-700">Module</label>
-            <div className={customerId && moduleList.length ? '' : 'opacity-50 pointer-events-none'}>
-              <MultiSelectDropdown
-                options={moduleList.map((m) => ({ value: m.id, label: m.title }))}
-                // empty = every module (same convention as the other filters)
-                selected={selectedIds.length === moduleList.length ? [] : selectedIds}
-                onChange={(ids) => setUnticked(ids.length ? new Set(moduleList.filter((m) => !ids.includes(m.id)).map((m) => m.id)) : new Set())}
-                placeholder={moduleList.length && !selectedIds.length ? 'No module selected' : 'All modules'}
-              />
-            </div>
-          </div>
+          <Select
+            label="Module"
+            value={moduleChoice}
+            disabled={!customerId || !moduleList.length}
+            onChange={(e) => chooseModule(e.target.value)}
+            options={[
+              { value: '', label: 'All modules' },
+              ...moduleList.map((m: any) => ({ value: m.id, label: m.title })),
+              // shown only when several (but not all) modules were ticked in the table
+              ...(moduleChoice === MULTI ? [{ value: MULTI, label: `${selectedIds.length} modules selected` }] : []),
+              ...(moduleChoice === NONE ? [{ value: NONE, label: 'No module selected' }] : []),
+            ]}
+          />
           <Input
             label="Month"
             type="month"
@@ -191,7 +203,8 @@ export default function MonthlyReviewPage() {
           <div className="mt-4">
             <Button onClick={handleDownload} loading={downloading} disabled={!selectedIds.length}>
               <Download className="w-4 h-4" /> Download Word (.docx)
-              {selectedIds.length < moduleList.length ? ` — ${selectedIds.length} of ${moduleList.length} modules` : ''}
+              {selectedIds.length === 1 ? ` — ${moduleList.find((m) => m.id === selectedIds[0])?.title} only`
+                : selectedIds.length < moduleList.length ? ` — ${selectedIds.length} of ${moduleList.length} modules` : ' — all modules'}
             </Button>
           </div>
         </div>
