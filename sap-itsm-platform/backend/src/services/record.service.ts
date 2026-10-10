@@ -553,7 +553,10 @@ export async function updateRecord(
   }
 
   // Development summary written by the ABAPer when they finish.
-  if (updates.abapDevNotes !== undefined) abapData.abapDevNotes = updates.abapDevNotes?.trim() || null;
+  if (updates.abapDevNotes !== undefined) {
+    const visible = (updates.abapDevNotes || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').trim();
+    abapData.abapDevNotes = visible ? updates.abapDevNotes!.trim() : null; // an empty editor saves as nothing
+  }
   if (updates.abapTransport !== undefined) abapData.abapTransport = updates.abapTransport?.trim() || null;
   if (updates.status === 'DEVELOPMENT_COMPLETED' && existing.status !== 'DEVELOPMENT_COMPLETED') {
     abapData.abapCompletedAt = now;

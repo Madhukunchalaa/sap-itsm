@@ -12,6 +12,7 @@ import { Modal } from '../components/ui/Modal';
 import { useAuthStore } from '../store/auth.store';
 import { formatDistanceToNow, format, formatDistance } from 'date-fns';
 import ReactQuill from 'react-quill';
+import DOMPurify from 'dompurify';
 import 'react-quill/dist/quill.snow.css';
 
 const STATUS_TRANSITIONS: Record<string, string[]> = {
@@ -199,7 +200,7 @@ export default function RecordDetailPage() {
     setDevModal(true);
   };
   const submitDev = async () => {
-    if (!devNotes.trim()) { toast.error('Please describe what was developed'); return; }
+    if (!devNotes.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').trim()) { toast.error('Please describe what was developed'); return; }
     const data: any = { abapDevNotes: devNotes, abapTransport: devTransport };
     if (beforeDevDone) data.status = 'DEVELOPMENT_COMPLETED';
     await saveAbap(data);
@@ -1203,7 +1204,12 @@ export default function RecordDetailPage() {
                           Development summary
                           {record.abapCompletedAt && <span className="normal-case font-normal text-green-600"> · completed {formatDistanceToNow(new Date(record.abapCompletedAt), { addSuffix: true })}</span>}
                         </p>
-                        {record.abapDevNotes && <p className="text-sm text-gray-800 whitespace-pre-wrap">{record.abapDevNotes}</p>}
+                        {record.abapDevNotes && (
+                          /<[a-z][\s\S]*>/i.test(record.abapDevNotes)
+                            ? <div className="text-sm text-gray-800 prose prose-sm max-w-none [&_pre]:whitespace-pre-wrap [&_p]:my-1"
+                                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(record.abapDevNotes) }} />
+                            : <p className="text-sm text-gray-800 whitespace-pre-wrap">{record.abapDevNotes}</p>
+                        )}
                         {record.abapTransport && (
                           <p className="text-xs text-gray-600">Transport: <span className="font-mono font-semibold">{record.abapTransport}</span></p>
                         )}
@@ -1359,7 +1365,7 @@ export default function RecordDetailPage() {
       </Modal>}
 
       {devModal && (
-        <Modal open={devModal} onClose={() => setDevModal(false)} title="Development summary" size="md"
+        <Modal open={devModal} onClose={() => setDevModal(false)} title="Development summary" size="xl"
           footer={<>
             <Button variant="secondary" onClick={() => setDevModal(false)}>Cancel</Button>
             <Button onClick={submitDev} loading={abapSaving} className="bg-green-600 hover:bg-green-700">
@@ -1367,13 +1373,17 @@ export default function RecordDetailPage() {
             </Button>
           </>}>
           <div className="space-y-4">
-            <Textarea
-              label="What was developed / changed *"
-              rows={5}
-              value={devNotes}
-              onChange={(e: any) => setDevNotes(e.target.value)}
-              placeholder="e.g. New Z report for GR/IR ageing; BAdI ME_PROCESS_PO_CUST corrected for plant 1820…"
-            />
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">What was developed / changed *</label>
+              <ReactQuill
+                theme="snow"
+                value={devNotes}
+                onChange={setDevNotes}
+                modules={DESCRIPTION_QUILL_MODULES}
+                placeholder="e.g. New Z report for GR/IR ageing; BAdI ME_PROCESS_PO_CUST corrected for plant 1820…"
+                className="rounded-lg [&_.ql-editor]:min-h-[260px] [&_.ql-editor]:max-h-[45vh] [&_.ql-editor]:overflow-y-auto"
+              />
+            </div>
             <Input
               label="Transport request(s)"
               value={devTransport}

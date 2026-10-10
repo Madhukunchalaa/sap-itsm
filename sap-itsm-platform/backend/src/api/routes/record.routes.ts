@@ -22,6 +22,9 @@ import crypto from 'crypto';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
+// Visible text of a rich-text (HTML) value — an empty editor still contains "<p><br></p>".
+const htmlText = (h: string) => h.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+
 const router = Router();
 router.use(verifyJWT, enforceTenantScope);
 
@@ -501,7 +504,7 @@ router.patch('/:id',
               res.status(403).json({ success: false, error: 'As the assigned ABAPer you can only mark the ticket Development Completed (or back to In Progress) and write the development summary. Use comments for anything else.' });
               return;
             }
-            const notes = ('abapDevNotes' in req.body ? String(req.body.abapDevNotes || '') : (rec.abapDevNotes || '')).trim();
+            const notes = htmlText('abapDevNotes' in req.body ? String(req.body.abapDevNotes || '') : (rec.abapDevNotes || ''));
             if (req.body.status === 'DEVELOPMENT_COMPLETED' && !notes) {
               res.status(400).json({ success: false, error: 'Please describe what was developed before marking Development Completed.' });
               return;

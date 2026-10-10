@@ -31,7 +31,7 @@ export const updateRecordSchema = z.object({
     assignedAgentId: z.string().uuid().nullable().optional(),
     abapRequired: z.boolean().optional(),                  // functional: ABAPer needed
     abapAgentId: z.string().uuid().nullable().optional(),  // Project Manager: the assigned ABAPer
-    abapDevNotes: z.string().max(5000).nullable().optional(),  // ABAPer: what was developed
+    abapDevNotes: z.string().max(100000).nullable().optional(),  // ABAPer: what was developed
     abapTransport: z.string().max(200).nullable().optional(),  // ABAPer: transport request number(s)
     ciId: z.string().uuid().nullable().optional(),
     sapModuleId: z.string().uuid().nullable().optional(),
