@@ -24,7 +24,7 @@ const BUCKET_STATUSES = {
 } as const;
 type BucketKey = keyof typeof BUCKET_STATUSES;
 
-const STATUS_TO_BUCKET: Record<string, BucketKey> = {};
+export const STATUS_TO_BUCKET: Record<string, BucketKey> = {};
 for (const key of Object.keys(BUCKET_STATUSES) as BucketKey[]) {
   for (const s of BUCKET_STATUSES[key]) STATUS_TO_BUCKET[s] = key;
 }

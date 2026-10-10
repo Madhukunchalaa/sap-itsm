@@ -106,6 +106,7 @@ const NAV_STRUCTURE = [
       { to: '/sap-modules', icon: Layers,      label: 'SAP Modules', roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
       { to: '/report-subscriptions', icon: Mail, label: 'Report Subscriptions', roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
       { to: '/status-report', icon: FileText, label: 'Status Report (PPT)', roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
+      { to: '/monthly-review', icon: FileText, label: 'Monthly Review (Word)', roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
       { to: '/plants', icon: Server, label: 'Plants', roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },
       { to: '/ai-analysis-access', icon: Database, label: 'AI Analysis Access', roles: ['SUPER_ADMIN'] },
       { to: '/audit',       icon: ShieldCheck, label: 'Audit Log',   roles: ['SUPER_ADMIN', 'PROJECT_MANAGER'] },

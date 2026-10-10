@@ -242,10 +242,18 @@ export interface StatusDeckParams {
   plant?: string;
   date?: string;
 }
+export interface MonthlyReviewParams {
+  customerId: string;
+  plant?: string;
+  month: string; // YYYY-MM
+  modules?: string; // comma-separated module ids; omitted = all modules
+}
 export const statusDecksApi = {
   customers: () => apiClient.get('/status-decks/customers'),
   preview: (params: StatusDeckParams) => apiClient.get('/status-decks/preview', { params }),
   download: (params: StatusDeckParams) => apiClient.get('/status-decks/download', { params, responseType: 'blob' }),
+  monthlyPreview: (params: MonthlyReviewParams) => apiClient.get('/status-decks/monthly-review/preview', { params }),
+  monthlyDownload: (params: MonthlyReviewParams) => apiClient.get('/status-decks/monthly-review/download', { params, responseType: 'blob' }),
 };
 
 export const reportSubscriptionsApi = {

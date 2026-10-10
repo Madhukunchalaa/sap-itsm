@@ -29,6 +29,7 @@ const SAPModulesPage     = lazy(() => import('./pages/SAPModulesPage'));
 const AssignmentRulesPage = lazy(() => import('./pages/AssignmentRulesPage'));
 const ReportSubscriptionsPage = lazy(() => import('./pages/ReportSubscriptionsPage'));
 const StatusDeckPage = lazy(() => import('./pages/StatusDeckPage'));
+const MonthlyReviewPage = lazy(() => import('./pages/MonthlyReviewPage'));
 const PlantsPage = lazy(() => import('./pages/PlantsPage'));
 const AiAnalysisAccessPage = lazy(() => import('./pages/AiAnalysisAccessPage'));
 const StatusHistoryPage = lazy(() => import('./pages/StatusHistoryPage'));
@@ -206,6 +207,11 @@ export default function App() {
                 <Route path="/report-subscriptions" element={
                   <ProtectedRoute roles={['SUPER_ADMIN', 'PROJECT_MANAGER']}>
                     <ReportSubscriptionsPage />
+                  </ProtectedRoute>
+                } />
+                <Route path="/monthly-review" element={
+                  <ProtectedRoute roles={['SUPER_ADMIN', 'PROJECT_MANAGER']}>
+                    <MonthlyReviewPage />
                   </ProtectedRoute>
                 } />
                 <Route path="/status-report" element={

@@ -8,9 +8,13 @@ import {
   buildStatusDeckData, generateStatusDeck, statusDeckFileName, StatusDeckData,
   buildConsolidatedDeckData, generateConsolidatedDeck, consolidatedDeckFileName,
 } from '../../services/statusDeck.service';
+import {
+  buildMonthlyReviewData, generateMonthlyReview, monthlyReviewFileName,
+} from '../../services/monthlyReview.service';
 
-// Weekly / Monthly status deck (.pptx) — manager level only: Project Managers
-// (limited to the customers they manage) and Super Admins.
+// Weekly / Monthly status deck (.pptx) and the monthly module review (.docx) —
+// manager level only: Project Managers (limited to the customers they manage)
+// and Super Admins.
 const router = Router();
 router.use(verifyJWT, enforceTenantScope, enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'));
 
@@ -117,6 +121,63 @@ router.get('/download', async (req: Request, res: Response, next: NextFunction) 
     }
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    res.send(file);
+  } catch (err) { next(err); }
+});
+
+// ── Monthly module review (.docx) ───────────────────────────────────────────
+
+const monthlyQuerySchema = z.object({
+  customerId: z.string().uuid(),
+  plant: z.string().trim().max(100).optional(),
+  month: z.string().regex(/^\d{4}-\d{2}$/, 'month must be YYYY-MM'),
+  modules: z.string().max(200).optional(), // comma-separated module ids; omitted = all
+});
+
+function parseMonthlyRequest(req: Request) {
+  const parsed = monthlyQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    throw new AppError(parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '), 400, 'VALIDATION_ERROR');
+  }
+  const modules = (parsed.data.modules || '').split(',').map((m) => m.trim()).filter(Boolean);
+  return { customerId: parsed.data.customerId, plant: parsed.data.plant || undefined, month: parsed.data.month, modules };
+}
+
+// GET /status-decks/monthly-review/preview — per-module numbers that go in the document
+router.get('/monthly-review/preview', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const opts = parseMonthlyRequest(req);
+    await assertCustomerAllowed(req, opts.customerId);
+    const data = await buildMonthlyReviewData(req.user!.tenantId, { ...opts, modules: undefined });
+    res.json({
+      success: true,
+      data: {
+        fileName: monthlyReviewFileName(data),
+        asOf: data.asOf,
+        modules: data.modules.map((m) => ({
+          id: m.id,
+          title: m.title,
+          carry: m.summary.carry,
+          newCount: m.summary.newCount,
+          closed: m.summary.carryClosed + m.summary.newClosed,
+          open: (m.summary.carry - m.summary.carryClosed) + (m.summary.newCount - m.summary.newClosed),
+          highOpen: m.highOpen.length,
+        })),
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+// GET /status-decks/monthly-review/download — the editable .docx
+router.get('/monthly-review/download', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const opts = parseMonthlyRequest(req);
+    await assertCustomerAllowed(req, opts.customerId);
+    const data = await buildMonthlyReviewData(req.user!.tenantId, opts);
+    const file = await generateMonthlyReview(data);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${monthlyReviewFileName(data)}"`);
     res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
     res.send(file);
   } catch (err) { next(err); }
