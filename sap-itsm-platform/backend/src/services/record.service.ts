@@ -56,6 +56,9 @@ export interface ListRecordsInput {
   targetDateFrom?: string;
   targetDateTo?: string;
   userOrModulesFilter?: { createdById: string; customerId: string; sapModuleId: string };
+  agentScopeId?: string;     // AGENT role: tickets they own OR are the assigned ABAPer on
+  abap?: 'needed' | 'unassigned' | 'assigned'; // ABAP hand-off filter
+  abapAgentId?: string;      // tickets assigned to this ABAPer
 }
 
 const RECORD_SELECT = {
@@ -70,6 +73,13 @@ const RECORD_SELECT = {
   customerId: true,
   contractId: true,
   assignedAgentId: true,
+  abapRequired: true,
+  abapRequestedAt: true,
+  abapAgentId: true,
+  abapAssignedAt: true,
+  abapDevNotes: true,
+  abapTransport: true,
+  abapCompletedAt: true,
   ciId: true,
   parentProblemId: true,
   tags: true,
@@ -86,6 +96,9 @@ const RECORD_SELECT = {
   updatedAt: true,
   customer: { select: { id: true, companyName: true, timezone: true } },
   assignedAgent: {
+    select: { id: true, level: true, user: { select: { firstName: true, lastName: true, email: true } } },
+  },
+  abapAgent: {
     select: { id: true, level: true, user: { select: { firstName: true, lastName: true, email: true } } },
   },
   ci: { select: { id: true, name: true, ciType: true } },
@@ -279,6 +292,27 @@ export async function createRecord(input: CreateRecordInput) {
   return record;
 }
 
+// An "ABAPer" is an active agent who has the ABAP module in their specialization.
+const abapAgentWhere = (tenantId: string): Prisma.AgentWhereInput => ({
+  user: { tenantId, status: 'ACTIVE' },
+  agentType: 'AGENT',
+  specializations: { some: { sapModule: { code: { equals: 'ABAP', mode: 'insensitive' } } } },
+});
+
+export async function listAbapAgents(tenantId: string) {
+  const rows = await prisma.agent.findMany({
+    where: abapAgentWhere(tenantId),
+    select: { id: true, user: { select: { firstName: true, lastName: true } } },
+  });
+  return rows
+    .map((r) => ({ id: r.id, name: `${r.user.firstName} ${r.user.lastName}`.trim() }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function isAbapAgent(tenantId: string, agentId: string): Promise<boolean> {
+  return (await prisma.agent.count({ where: { id: agentId, ...abapAgentWhere(tenantId) } })) > 0;
+}
+
 // Sentinel the Records page sends as `plant` to list tickets that have no plant.
 export const NO_PLANT_FILTER = '__NONE__';
 
@@ -309,6 +343,14 @@ export async function listRecords(input: ListRecordsInput) {
   if (input.plant === NO_PLANT_FILTER) {
     andConditions.push({ OR: [{ plant: null }, { plant: '' }] });
   }
+
+  if (input.agentScopeId) {
+    andConditions.push({ OR: [{ assignedAgentId: input.agentScopeId }, { abapAgentId: input.agentScopeId }] });
+  }
+  if (input.abap === 'needed') andConditions.push({ abapRequired: true });
+  if (input.abap === 'unassigned') andConditions.push({ abapRequired: true, abapAgentId: null });
+  if (input.abap === 'assigned') andConditions.push({ abapAgentId: { not: null } });
+  if (input.abapAgentId) andConditions.push({ abapAgentId: input.abapAgentId });
 
   if (input.userOrModulesFilter) {
     andConditions.push({
@@ -421,6 +463,10 @@ export async function updateRecord(
     priority: Priority;
     status: RecordStatus;
     assignedAgentId: string | null;
+    abapRequired: boolean;
+    abapAgentId: string | null;
+    abapDevNotes: string | null;
+    abapTransport: string | null;
     ciId: string | null;
     sapModuleId: string | null;
     sapSubModuleId: string | null;
@@ -488,9 +534,36 @@ export async function updateRecord(
     }
   }
 
+  // ABAP hand-off rules: un-flagging clears the ABAPer; assigning an ABAPer implies "needed".
+  const abapData: Record<string, unknown> = {};
+  if (updates.abapRequired !== undefined || updates.abapAgentId !== undefined) {
+    let required = updates.abapRequired ?? existing.abapRequired;
+    let abapAgentId = updates.abapAgentId !== undefined ? updates.abapAgentId : existing.abapAgentId;
+    if (updates.abapRequired === false) abapAgentId = null;
+    if (abapAgentId) {
+      required = true;
+      if (abapAgentId !== existing.abapAgentId && !(await isAbapAgent(tenantId, abapAgentId))) {
+        throw new AppError('That agent is not set up as an ABAPer (give them the ABAP module under Agents > Specialization).', 400, 'VALIDATION_ERROR');
+      }
+    }
+    abapData.abapRequired = required;
+    abapData.abapRequestedAt = required ? (existing.abapRequestedAt ?? now) : null;
+    abapData.abapAgentId = abapAgentId;
+    abapData.abapAssignedAt = abapAgentId ? (abapAgentId !== existing.abapAgentId ? now : existing.abapAssignedAt) : null;
+  }
+
+  // Development summary written by the ABAPer when they finish.
+  if (updates.abapDevNotes !== undefined) abapData.abapDevNotes = updates.abapDevNotes?.trim() || null;
+  if (updates.abapTransport !== undefined) abapData.abapTransport = updates.abapTransport?.trim() || null;
+  if (updates.status === 'DEVELOPMENT_COMPLETED' && existing.status !== 'DEVELOPMENT_COMPLETED') {
+    abapData.abapCompletedAt = now;
+  } else if (updates.status && ['NEW', 'OPEN', 'IN_PROGRESS'].includes(updates.status) && existing.abapCompletedAt) {
+    abapData.abapCompletedAt = null; // sent back for more development
+  }
+
   const updated = await prisma.iTSMRecord.update({
     where: { id },
-    data: { ...(updates as any), ...(statusData as any) },
+    data: { ...(updates as any), ...(statusData as any), ...(abapData as any) },
     select: RECORD_SELECT,
   });
 
@@ -500,7 +573,7 @@ export async function updateRecord(
   // those widgets could show stale data for up to the 120s cache TTL.
   await cache.delPattern('dash*').catch(() => null);
 
-  const diff = diffObjects(existing as any, { ...existing, ...updates } as any);
+  const diff = diffObjects(existing as any, { ...existing, ...updates, ...abapData } as any);
   await auditLog({
     tenantId, userId, recordId: id,
     action:     updates.status ? 'STATUS_CHANGE' : 'UPDATE',
@@ -528,6 +601,22 @@ export async function updateRecord(
     notifyPMOnUpdate({
       recordId: id, tenantId, triggeredById: userId,
       eventLabel: `Ticket assigned to a new agent`,
+    }).catch(() => null);
+  }
+  if (abapData.abapRequired === true && !existing.abapRequired) {
+    notifyPMOnUpdate({
+      recordId: id, tenantId, triggeredById: userId,
+      eventLabel: 'An ABAPer is needed for this ticket — please assign one',
+    }).catch(() => null);
+  }
+  if (abapData.abapAgentId && abapData.abapAgentId !== existing.abapAgentId) {
+    notify({
+      event: 'ASSIGNED', recordId: id, tenantId, triggeredBy: userId,
+      payload: { agentId: abapData.abapAgentId as string },
+    }).catch(() => null);
+    notifyPMOnUpdate({
+      recordId: id, tenantId, triggeredById: userId,
+      eventLabel: 'An ABAPer was assigned to this ticket',
     }).catch(() => null);
   }
   if (updates.priority && updates.priority !== existing.priority) {

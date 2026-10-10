@@ -28,7 +28,7 @@ async function buildScopeWhere(req: any): Promise<{ where: any; cacheKey: string
     result = { where: { tenantId, createdById: userId }, cacheKey: `dash:u:${userId}` };
   } else if (role === 'AGENT') {
     const agent = await resolveAgent(userId);
-    if (agent) result = { where: { tenantId, assignedAgentId: agent.id }, cacheKey: `dash:ag:${agent.id}` };
+    if (agent) result = { where: { tenantId, OR: [{ assignedAgentId: agent.id }, { abapAgentId: agent.id }] }, cacheKey: `dash:ag:${agent.id}` };
   } else if (role === 'PROJECT_MANAGER') {
     const agent = await resolveAgent(userId);
     if (agent) {

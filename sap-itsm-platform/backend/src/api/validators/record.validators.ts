@@ -29,6 +29,10 @@ export const updateRecordSchema = z.object({
       .enum(['NEW', 'OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED', 'CANCELLED', 'AWAITING_CUSTOMER', 'WITH_SAP', 'IN_UAT', 'HOLD', 'DEVELOPMENT_COMPLETED', 'MOVED_TO_QUALITY', 'MOVED_TO_PRODUCTION', 'REOPEN'])
       .optional(),
     assignedAgentId: z.string().uuid().nullable().optional(),
+    abapRequired: z.boolean().optional(),                  // functional: ABAPer needed
+    abapAgentId: z.string().uuid().nullable().optional(),  // Project Manager: the assigned ABAPer
+    abapDevNotes: z.string().max(5000).nullable().optional(),  // ABAPer: what was developed
+    abapTransport: z.string().max(200).nullable().optional(),  // ABAPer: transport request number(s)
     ciId: z.string().uuid().nullable().optional(),
     sapModuleId: z.string().uuid().nullable().optional(),
     sapSubModuleId: z.string().uuid().nullable().optional(),
@@ -79,6 +83,8 @@ export const listRecordsSchema = z.object({
       ])
       .optional(),
     plant: z.string().optional(),
+    abap: z.enum(['needed', 'unassigned', 'assigned']).optional(),
+    abapAgentId: z.string().uuid().optional(),
     search: z.string().max(200).optional(),
     sortBy: z
       .enum(['createdAt', 'updatedAt', 'priority', 'status', 'recordNumber'])

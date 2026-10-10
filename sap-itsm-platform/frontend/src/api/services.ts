@@ -35,6 +35,8 @@ export interface RecordFilters {
   customerId?: string;
   sapModuleId?: string | string[];
   plant?: string;
+  abap?: string;        // 'needed' | 'unassigned' | 'assigned'
+  abapAgentId?: string;
   search?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
@@ -53,6 +55,9 @@ export const chatApi = {
 export const recordsApi = {
   list: (filters: RecordFilters = {}) =>
     apiClient.get('/records', { params: filters }),
+
+  // ABAPers a Project Manager can assign (agents with the ABAP module)
+  abapAgents: () => apiClient.get('/records/abap-agents'),
 
   aiTriage: (id: string) => apiClient.post(`/records/${id}/ai-triage`),
 

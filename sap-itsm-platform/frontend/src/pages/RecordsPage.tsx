@@ -104,6 +104,7 @@ const TOGGLEABLE_COLUMNS = [
   { key: 'targetDate',        label: 'Target Date' },
   { key: 'revisedTargetDate', label: 'Revised Target Date' },
   { key: 'assignedAgent',     label: 'Assigned' },
+  { key: 'abap',              label: 'ABAP' },
   { key: 'createdAt',         label: 'Created' },
 ];
 // Shown by default; the two new date columns are opt-in.
@@ -170,6 +171,7 @@ export default function RecordsPage() {
     selPriority, setSelPriority,
     selModule, setSelModule,
     selPlant, setSelPlant,
+    selAbap: selAbapRaw, setSelAbap,
     selCustomer, setSelCustomer,
     selAgent, setSelAgent,
     selCreator, setSelCreator,
@@ -186,6 +188,9 @@ export default function RecordsPage() {
     queryFn: () => (selCustomer ? plantsApi.byCustomer(selCustomer) : plantsApi.list(true)).then(r => r.data.data || []),
   });
 
+  const selAbap = selAbapRaw || ''; // older saved filter state has no ABAP value
+  const canSeeAbap = ['SUPER_ADMIN', 'PROJECT_MANAGER', 'AGENT'].includes(user?.role || '');
+
   const [exportLimit, setExportLimit] = React.useState('current');
   const { data: resolvedCount } = useResolvedTicketCount(user?.id || '');
   const [restrictionModalOpen, setRestrictionModalOpen] = React.useState(false);
@@ -197,6 +202,7 @@ export default function RecordsPage() {
     priority:        selPriority.length ? (selPriority as any) : undefined,
     sapModuleId:     selModule.length   ? (selModule as any)   : undefined,
     plant:           selPlant           || undefined,
+    abap:            selAbap            || undefined,
     customerId:      selCustomer        || undefined,
     assignedAgentId: selAgent.length    ? (selAgent as any)   : undefined,
     createdById:     selCreator         || undefined,
@@ -209,6 +215,7 @@ export default function RecordsPage() {
     (selPriority.length > 0 ? 1 : 0) +
     (selModule.length   > 0 ? 1 : 0) +
     (selPlant           ? 1 : 0) +
+    (selAbap            ? 1 : 0) +
     (selCustomer        ? 1 : 0) +
     (selAgent.length    > 0 ? 1 : 0) +
     (selCreator         ? 1 : 0) +
@@ -274,6 +281,7 @@ export default function RecordsPage() {
           priority:        selPriority.length ? (selPriority as any) : undefined,
           sapModuleId:     selModule.length   ? (selModule as any)   : undefined,
           plant:           selPlant           || undefined,
+          abap:            selAbap            || undefined,
           customerId:      selCustomer        || undefined,
           assignedAgentId: selAgent.length    ? (selAgent as any)   : undefined,
           createdById:     selCreator         || undefined,
@@ -406,6 +414,18 @@ export default function RecordsPage() {
     ) : <span className="text-xs text-gray-300">—</span>,
     className: 'w-28',
   };
+  const abapColumn: Column<any> = {
+    key: 'abap',
+    header: 'ABAP',
+    render: (row) => row.abapAgent ? (
+      <span className="text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1.5 py-0.5">
+        {row.abapAgent.user.firstName} {row.abapAgent.user.lastName}
+      </span>
+    ) : row.abapRequired ? (
+      <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">ABAPer needed</span>
+    ) : <span className="text-xs text-gray-300">—</span>,
+    className: 'w-36',
+  };
   const clientColumn: Column<any> = {
     key: 'customer',
     header: 'Client',
@@ -465,17 +485,18 @@ export default function RecordsPage() {
     priority: priorityColumn, status: statusColumn, sla: slaColumn,
     plant: plantColumn, customer: clientColumn, sapModule: moduleColumn,
     targetDate: targetDateColumn, revisedTargetDate: revisedTargetDateColumn,
-    assignedAgent: assignedAgentColumn, createdAt: createdAtColumn,
+    assignedAgent: assignedAgentColumn, abap: abapColumn, createdAt: createdAtColumn,
   };
   const ORDERED_COLUMN_KEYS = [
     'recordNumber', 'type', 'title', 'priority', 'status', 'sla',
     'plant', 'customer', 'sapModule', 'targetDate', 'revisedTargetDate',
-    'assignedAgent', 'createdAt',
+    'assignedAgent', 'abap', 'createdAt',
   ];
   const LOCKED_COLUMNS = ['recordNumber', 'title'];
 
   const columns: Column<any>[] = ORDERED_COLUMN_KEYS
     .filter(key => key !== 'sapModule' || canSeeModuleColumn)
+    .filter(key => key !== 'abap' || canSeeAbap)
     .filter(key => LOCKED_COLUMNS.includes(key) || visibleColKeys.includes(key))
     .map(key => columnMap[key]);
 
@@ -719,6 +740,26 @@ export default function RecordsPage() {
                 {plantsRaw.map((p: any) => (
                   <option key={p.id} value={p.name}>{p.name}</option>
                 ))}
+              </select>
+            </div>
+          )}
+
+          {/* ABAP hand-off queue — staff only */}
+          {canSeeAbap && (
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
+                ABAP
+                {selAbap && <span className="text-blue-600 font-semibold">1</span>}
+              </label>
+              <select
+                value={selAbap}
+                onChange={(e) => { setSelAbap(e.target.value); setFilters({ page: 1 }); }}
+                className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="">All Tickets</option>
+                <option value="needed">ABAPer needed (all)</option>
+                <option value="unassigned">Needed — not assigned yet</option>
+                <option value="assigned">ABAPer assigned</option>
               </select>
             </div>
           )}

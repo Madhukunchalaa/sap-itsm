@@ -7,6 +7,7 @@ import {
 } from '../validators/record.validators';
 import {
   createRecord, listRecords, getRecord, updateRecord, addComment, updateComment, deleteComment, addTimeEntry, deleteRecord,
+  listAbapAgents,
 } from '../../services/record.service';
 import { prisma } from '../../config/database';
 import { generateTriage } from '../../services/chat.service';
@@ -128,6 +129,7 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
     let customerIdIn:    string[] | undefined;
     let createdById:     string | undefined;
     let assignedAgentId: string | undefined;
+    let agentScopeId:    string | undefined;
     let userOrModulesFilter: { createdById: string; customerId: string; sapModuleId: string } | undefined;
 
     switch (role) {
@@ -184,7 +186,7 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
       case 'AGENT': {
         const agent = await resolveAgent(req.user!.sub);
         if (!agent) { res.json(EMPTY); return; }
-        assignedAgentId = agent.id;
+        agentScopeId = agent.id; // own tickets + tickets where they are the assigned ABAPer
         if (q.createdById) createdById = q.createdById;
         if (q.customerId) customerId = q.customerId;
         break;
@@ -233,6 +235,9 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
       assignedAgentIdIn: assignedAgentIdIn,
       sapModuleIdIn:   sapModuleIdIn.length ? sapModuleIdIn : undefined,
       userOrModulesFilter,
+      agentScopeId,
+      abap:            q.abap,
+      abapAgentId:     q.abapAgentId,
       plant:           role === 'PLANT_MANAGER' ? req.user!.plant : q.plant,
       search:          q.search,
       sortBy:          q.sortBy,
@@ -244,6 +249,13 @@ router.get('/', validate(listRecordsSchema), async (req: Request, res: Response,
     });
 
     res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+});
+
+// GET /records/abap-agents — ABAPers a Project Manager can assign (dropdown)
+router.get('/abap-agents', enforceRole('SUPER_ADMIN', 'PROJECT_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json({ success: true, data: await listAbapAgents(req.user!.tenantId) });
   } catch (err) { next(err); }
 });
 
@@ -299,7 +311,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       }
       case 'AGENT': {
         const agent = await resolveAgent(userId);
-        if (!agent || record.assignedAgentId !== agent.id) {
+        if (!agent || (record.assignedAgentId !== agent.id && record.abapAgentId !== agent.id)) {
           res.status(403).json({ success: false, error: 'Access denied' }); return;
         }
         break;
@@ -410,6 +422,91 @@ router.patch('/:id',
             error: `Access denied. Users can only update: ${allowedFields.join(', ')}`,
           });
           return;
+        }
+      }
+
+      // -- ABAP hand-off ------------------------------------------------
+      //  Functional consultant (ticket owner): can flag "ABAPer needed"
+      //  Project Manager / Super Admin:         can also assign / change the ABAPer
+      //  Assigned ABAPer (not the owner):       can only move the ticket to
+      //                                         Development Completed / back to In Progress
+      const touchesAbap = 'abapRequired' in req.body || 'abapAgentId' in req.body;
+      const touchesDev = 'abapDevNotes' in req.body || 'abapTransport' in req.body;
+      if (touchesDev) {
+        // Only the assigned ABAPer, the Project Manager of that customer, or a Super Admin
+        const rec = await prisma.iTSMRecord.findFirst({
+          where: { id: req.params.id, tenantId: req.user!.tenantId },
+          select: { abapAgentId: true, customerId: true },
+        });
+        if (!rec) { res.status(404).json({ success: false, error: 'Record not found' }); return; }
+        let allowed = role === 'SUPER_ADMIN';
+        if (role === 'AGENT') {
+          const me = await resolveAgent(userId);
+          allowed = !!me && rec.abapAgentId === me.id;
+        } else if (role === 'PROJECT_MANAGER') {
+          const me = await resolveAgent(userId);
+          const managed = me ? await resolveManagedCustomerIds(me.id, req.user!.tenantId) : [];
+          allowed = !!rec.customerId && managed.includes(rec.customerId);
+        }
+        if (!allowed) {
+          res.status(403).json({ success: false, error: 'Only the assigned ABAPer or the Project Manager can edit the development summary.' });
+          return;
+        }
+      }
+      if (touchesAbap) {
+        if (!['SUPER_ADMIN', 'PROJECT_MANAGER', 'AGENT'].includes(role)) {
+          res.status(403).json({ success: false, error: 'Access denied. Only the functional consultant or Project Manager can request an ABAPer.' });
+          return;
+        }
+        const rec = await prisma.iTSMRecord.findFirst({
+          where: { id: req.params.id, tenantId: req.user!.tenantId },
+          select: { assignedAgentId: true, abapAgentId: true, customerId: true },
+        });
+        if (!rec) { res.status(404).json({ success: false, error: 'Record not found' }); return; }
+
+        if (role === 'AGENT') {
+          const me = await resolveAgent(userId);
+          if (!me || rec.assignedAgentId !== me.id) {
+            res.status(403).json({ success: false, error: 'Only the ticket owner can request an ABAPer.' });
+            return;
+          }
+          if ('abapAgentId' in req.body) {
+            res.status(403).json({ success: false, error: 'Only the Project Manager can assign the ABAPer.' });
+            return;
+          }
+          if (req.body.abapRequired === false && rec.abapAgentId) {
+            res.status(403).json({ success: false, error: 'An ABAPer is already assigned - ask the Project Manager to change it.' });
+            return;
+          }
+        } else if (role === 'PROJECT_MANAGER') {
+          const me = await resolveAgent(userId);
+          const managed = me ? await resolveManagedCustomerIds(me.id, req.user!.tenantId) : [];
+          if (!rec.customerId || !managed.includes(rec.customerId)) {
+            res.status(403).json({ success: false, error: 'You do not manage this ticket customer.' });
+            return;
+          }
+        }
+      } else if (role === 'AGENT') {
+        const me = await resolveAgent(userId);
+        if (me) {
+          const rec = await prisma.iTSMRecord.findFirst({
+            where: { id: req.params.id, tenantId: req.user!.tenantId },
+            select: { assignedAgentId: true, abapAgentId: true, abapDevNotes: true },
+          });
+          if (rec && rec.assignedAgentId !== me.id && rec.abapAgentId === me.id) {
+            const keys = Object.keys(req.body);
+            const allowedKeys = ['status', 'abapDevNotes', 'abapTransport'];
+            const okStatus = req.body.status === undefined || ['DEVELOPMENT_COMPLETED', 'IN_PROGRESS'].includes(req.body.status);
+            if (keys.length === 0 || !keys.every((k) => allowedKeys.includes(k)) || !okStatus) {
+              res.status(403).json({ success: false, error: 'As the assigned ABAPer you can only mark the ticket Development Completed (or back to In Progress) and write the development summary. Use comments for anything else.' });
+              return;
+            }
+            const notes = ('abapDevNotes' in req.body ? String(req.body.abapDevNotes || '') : (rec.abapDevNotes || '')).trim();
+            if (req.body.status === 'DEVELOPMENT_COMPLETED' && !notes) {
+              res.status(400).json({ success: false, error: 'Please describe what was developed before marking Development Completed.' });
+              return;
+            }
+          }
         }
       }
 

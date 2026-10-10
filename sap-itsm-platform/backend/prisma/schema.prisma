@@ -109,7 +109,8 @@ model Agent {
   user             User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   customerAgents      CustomerAgent[]
   projectManagers     CustomerProjectManager[]
-  assignments         ITSMRecord[]
+  assignments         ITSMRecord[]            @relation("RecordAssignedAgent")
+  abapAssignments     ITSMRecord[]            @relation("RecordAbapAgent")
   timeEntries         TimeEntry[]
 
   @@index([status])
@@ -475,6 +476,16 @@ model ITSMRecord {
   customerId      String?             @map("customer_id")
   contractId      String?             @map("contract_id")
   assignedAgentId String?             @map("assigned_agent_id")
+  // ABAP development hand-off: the functional consultant flags that an ABAPer is
+  // needed, the Project Manager then assigns one (see abapAgent below).
+  abapRequired    Boolean             @default(false) @map("abap_required")
+  abapRequestedAt DateTime?           @map("abap_requested_at")
+  abapAgentId     String?             @map("abap_agent_id")
+  abapAssignedAt  DateTime?           @map("abap_assigned_at")
+  // Filled in by the ABAPer when they mark Development Completed
+  abapDevNotes    String?             @map("abap_dev_notes")
+  abapTransport   String?             @map("abap_transport")
+  abapCompletedAt DateTime?           @map("abap_completed_at")
   ciId            String?             @map("ci_id")
   parentProblemId String?             @map("parent_problem_id")
   createdById     String              @map("created_by")
@@ -493,7 +504,8 @@ model ITSMRecord {
   auditLogs       AuditLog[]
   comments        Comment[]
   emailLogs       EmailLog[]
-  assignedAgent   Agent?              @relation(fields: [assignedAgentId], references: [id])
+  assignedAgent   Agent?              @relation("RecordAssignedAgent", fields: [assignedAgentId], references: [id])
+  abapAgent       Agent?              @relation("RecordAbapAgent", fields: [abapAgentId], references: [id])
   ci              ConfigurationItem?  @relation(fields: [ciId], references: [id])
   contract        Contract?           @relation(fields: [contractId], references: [id])
   createdBy       User                @relation("CreatedBy", fields: [createdById], references: [id])
@@ -514,6 +526,7 @@ model ITSMRecord {
   @@index([priority])
   @@index([createdAt])
   @@index([assignedAgentId])
+  @@index([abapAgentId])
   @@index([customerId])
   @@map("itsm_records")
 }

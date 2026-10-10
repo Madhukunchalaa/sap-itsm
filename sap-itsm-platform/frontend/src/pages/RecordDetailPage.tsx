@@ -7,7 +7,7 @@ import { useRecord, useUpdateRecord, useAddComment, useAddTimeEntry, useAgents, 
 import { auditApi, recordsApi, sapModulesApi, plantsApi } from '../api/services';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { PriorityBadge, StatusBadge, TypeBadge } from '../components/ui/Badges';
-import { Button, Card, Textarea } from '../components/ui/Forms';
+import { Button, Card, Textarea, Input } from '../components/ui/Forms';
 import { Modal } from '../components/ui/Modal';
 import { useAuthStore } from '../store/auth.store';
 import { formatDistanceToNow, format, formatDistance } from 'date-fns';
@@ -76,6 +76,20 @@ export default function RecordDetailPage() {
     enabled: !!recordCustomerId,
   });
   const plants: any[] = plantsData || [];
+
+  // ABAP hand-off: functional flags "ABAPer needed", the Project Manager picks the ABAPer.
+  const canAssignAbap = ['SUPER_ADMIN', 'PROJECT_MANAGER'].includes(user?.role || '');
+  const { data: abapAgentsData } = useQuery({
+    queryKey: ['abap-agents'],
+    queryFn: () => recordsApi.abapAgents().then(r => (r.data.data || []) as { id: string; name: string }[]),
+    enabled: canAssignAbap,
+  });
+  const abapAgents = abapAgentsData || [];
+  const [abapSaving, setAbapSaving] = useState(false);
+  const [abapPick, setAbapPick] = useState('');
+  const [devModal, setDevModal] = useState(false);
+  const [devNotes, setDevNotes] = useState('');
+  const [devTransport, setDevTransport] = useState('');
 
   const [activeTab, setActiveTab] = useState<'comments'|'time'|'changelog'>('comments');
   const [changeLog, setChangeLog] = React.useState<any[]>([]);
@@ -162,6 +176,35 @@ export default function RecordDetailPage() {
   const canAssign = ['SUPER_ADMIN','COMPANY_ADMIN','PROJECT_MANAGER'].includes(user?.role||'');
   const canEditSapModule = ['SUPER_ADMIN','PROJECT_MANAGER'].includes(user?.role||'');
   const canSeeInternal = ['SUPER_ADMIN', 'AGENT'].includes(user?.role||'');
+
+  const myEmail = (user?.email || '').toLowerCase();
+  const isOwnerAgent = user?.role === 'AGENT' && (record.assignedAgent?.user?.email || '').toLowerCase() === myEmail;
+  const isAbapAgentUser = user?.role === 'AGENT' && (record.abapAgent?.user?.email || '').toLowerCase() === myEmail;
+  const abapOnly = isAbapAgentUser && !isOwnerAgent; // helping on someone else's ticket
+  const canSeeAbap = ['SUPER_ADMIN', 'PROJECT_MANAGER', 'AGENT'].includes(user?.role || '');
+  const canFlagAbap = canAssignAbap || isOwnerAgent;
+  const saveAbap = async (data: object) => {
+    setAbapSaving(true);
+    try {
+      await updateRecord.mutateAsync({ id: record.id, data });
+      setAbapPick('');
+    } finally { setAbapSaving(false); }
+  };
+  // The development summary (what was built + transport) the ABAPer writes when finishing.
+  const canEditDev = isAbapAgentUser || (canAssignAbap && !!record.abapAgent);
+  const beforeDevDone = !['DEVELOPMENT_COMPLETED', 'IN_UAT', 'MOVED_TO_QUALITY', 'MOVED_TO_PRODUCTION', 'RESOLVED', 'CLOSED', 'CANCELLED'].includes(record.status);
+  const openDevModal = () => {
+    setDevNotes(record.abapDevNotes || '');
+    setDevTransport(record.abapTransport || '');
+    setDevModal(true);
+  };
+  const submitDev = async () => {
+    if (!devNotes.trim()) { toast.error('Please describe what was developed'); return; }
+    const data: any = { abapDevNotes: devNotes, abapTransport: devTransport };
+    if (beforeDevDone) data.status = 'DEVELOPMENT_COMPLETED';
+    await saveAbap(data);
+    setDevModal(false);
+  };
 
   // AI Triage access: SUPER_ADMIN, or an email in VITE_AI_TRIAGE_EMAILS (mirror
   // of the backend AI_TRIAGE_EMAILS allowlist). Backend enforces this too.
@@ -366,7 +409,7 @@ export default function RecordDetailPage() {
                 <Trash2 className="w-4 h-4"/> Delete
               </button>
             )}
-            {canEdit && <button onClick={handleEnterEdit}
+            {canEdit && !abapOnly && <button onClick={handleEnterEdit}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">
               <Edit2 className="w-4 h-4"/> Edit
             </button>}
@@ -1080,6 +1123,106 @@ export default function RecordDetailPage() {
                 </div>
               </div>
 
+              {canSeeAbap && (
+                <div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3">
+                  <label className="text-xs font-semibold text-violet-600 uppercase tracking-wide">ABAP Development</label>
+                  <div className="mt-2 space-y-2.5">
+                    {canFlagAbap ? (
+                      <label className={`flex items-start gap-2 text-sm text-gray-800 ${record.abapAgent && !canAssignAbap ? 'opacity-60' : ''}`}>
+                        <input type="checkbox" className="mt-0.5" checked={!!record.abapRequired}
+                          disabled={abapSaving || (!!record.abapAgent && !canAssignAbap)}
+                          onChange={(e) => saveAbap({ abapRequired: e.target.checked })} />
+                        <span>
+                          ABAPer needed
+                          {record.abapRequestedAt && (
+                            <span className="block text-xs text-gray-400">requested {formatDistanceToNow(new Date(record.abapRequestedAt), { addSuffix: true })}</span>
+                          )}
+                          {record.abapAgent && !canAssignAbap && (
+                            <span className="block text-xs text-gray-400">ABAPer already assigned — ask the Project Manager to change it</span>
+                          )}
+                        </span>
+                      </label>
+                    ) : (
+                      <p className="text-sm text-gray-700">{record.abapRequired ? 'ABAPer needed' : 'No ABAP work requested'}</p>
+                    )}
+
+                    {record.abapRequired && (
+                      record.abapAgent ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-violet-500 text-white text-xs font-bold flex items-center justify-center">
+                            {record.abapAgent.user.firstName[0]}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{record.abapAgent.user.firstName} {record.abapAgent.user.lastName}</p>
+                            {record.abapAssignedAt && (
+                              <p className="text-xs text-gray-400">assigned {formatDistanceToNow(new Date(record.abapAssignedAt), { addSuffix: true })}</p>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                          Waiting for the Project Manager to assign an ABAPer
+                        </p>
+                      )
+                    )}
+
+                    {canAssignAbap && record.abapRequired && (
+                      <div className="space-y-1.5">
+                        <div className="flex gap-2">
+                          <select
+                            value={abapPick || record.abapAgent?.id || ''}
+                            onChange={(e) => setAbapPick(e.target.value)}
+                            className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-violet-500 focus:outline-none bg-white"
+                          >
+                            <option value="">— Select ABAPer —</option>
+                            {abapAgents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                          </select>
+                          <button
+                            disabled={abapSaving || !abapPick || abapPick === record.abapAgent?.id}
+                            onClick={() => saveAbap({ abapAgentId: abapPick })}
+                            className="px-3 py-1.5 text-sm rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            {record.abapAgent ? 'Change' : 'Assign'}
+                          </button>
+                        </div>
+                        {abapAgents.length === 0 && (
+                          <p className="text-xs text-gray-400">No ABAPers found — add the ABAP module under Agents &rarr; Specialization.</p>
+                        )}
+                        {record.abapAgent && (
+                          <button disabled={abapSaving} onClick={() => saveAbap({ abapAgentId: null })}
+                            className="text-xs text-gray-500 hover:text-red-600 underline">
+                            Remove ABAPer
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {(record.abapDevNotes || record.abapTransport) && (
+                      <div className="rounded-lg border border-green-200 bg-green-50 p-2.5 space-y-1.5">
+                        <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">
+                          Development summary
+                          {record.abapCompletedAt && <span className="normal-case font-normal text-green-600"> · completed {formatDistanceToNow(new Date(record.abapCompletedAt), { addSuffix: true })}</span>}
+                        </p>
+                        {record.abapDevNotes && <p className="text-sm text-gray-800 whitespace-pre-wrap">{record.abapDevNotes}</p>}
+                        {record.abapTransport && (
+                          <p className="text-xs text-gray-600">Transport: <span className="font-mono font-semibold">{record.abapTransport}</span></p>
+                        )}
+                      </div>
+                    )}
+
+                    {canEditDev && record.abapRequired && (
+                      <button disabled={abapSaving} onClick={openDevModal}
+                        className={`w-full px-3 py-1.5 text-sm rounded-lg disabled:opacity-40 ${
+                          record.abapDevNotes || !beforeDevDone
+                            ? 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+                            : 'bg-green-600 text-white hover:bg-green-700'}`}>
+                        {record.abapDevNotes || !beforeDevDone ? 'Edit development summary' : 'Mark Development Completed'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {record.customer && (
                 <div>
                   <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Customer</label>
@@ -1214,6 +1357,33 @@ export default function RecordDetailPage() {
             onChange={e=>setTimeForm(f=>({...f,description:e.target.value}))} placeholder="What did you work on?" rows={3}/>
         </div>
       </Modal>}
+
+      {devModal && (
+        <Modal open={devModal} onClose={() => setDevModal(false)} title="Development summary" size="md"
+          footer={<>
+            <Button variant="secondary" onClick={() => setDevModal(false)}>Cancel</Button>
+            <Button onClick={submitDev} loading={abapSaving} className="bg-green-600 hover:bg-green-700">
+              {beforeDevDone ? 'Save & mark Development Completed' : 'Save'}
+            </Button>
+          </>}>
+          <div className="space-y-4">
+            <Textarea
+              label="What was developed / changed *"
+              rows={5}
+              value={devNotes}
+              onChange={(e: any) => setDevNotes(e.target.value)}
+              placeholder="e.g. New Z report for GR/IR ageing; BAdI ME_PROCESS_PO_CUST corrected for plant 1820…"
+            />
+            <Input
+              label="Transport request(s)"
+              value={devTransport}
+              onChange={(e: any) => setDevTransport(e.target.value)}
+              placeholder="e.g. DS4K900123, DS4K900145"
+            />
+            <p className="text-xs text-gray-400">The functional consultant sees this on the ticket before moving it to UAT.</p>
+          </div>
+        </Modal>
+      )}
 
       {closeModal && <Modal open={closeModal} onClose={()=>setCloseModal(false)} title="Close Ticket" size="sm"
         footer={<><Button variant="secondary" onClick={()=>setCloseModal(false)}>Cancel</Button><Button onClick={async()=>{await closeRecord.mutateAsync(record.id);setCloseModal(false);}} loading={closeRecord.isPending} className="bg-gray-800 hover:bg-gray-900">Yes, Close Ticket</Button></>}>
