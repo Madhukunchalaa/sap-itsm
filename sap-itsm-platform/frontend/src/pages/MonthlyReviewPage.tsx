@@ -197,7 +197,8 @@ export default function MonthlyReviewPage() {
           </div>
           <p className="text-xs text-gray-500 mt-3">
             Tick the modules to include — each ticked module becomes one page. Counts run up to {format(new Date(preview.asOf), 'dd-MM-yyyy')}. "High priority" means P1 and P2.
-            Modules not listed above (e.g. Fiori, HR, PM) appear on an "Other modules" page. The SAP and Business contact lines and the
+            The ABAP page lists every ticket where an ABAPer is needed or assigned, whatever its module (those tickets also stay on
+            their own module's page). Modules not listed above (e.g. Fiori, HR, PM) appear on an "Other modules" page. The SAP and Business contact lines and the
             Comments column are left blank to fill in Word.
           </p>
           <div className="mt-4">

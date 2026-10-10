@@ -54,6 +54,7 @@ export interface HighOpenItem {
   createdAt: Date;
   targetDate: Date | null;
   statusLabel: string;
+  comment?: string; // pre-filled Comments cell (ABAP page: ABAPer + transport)
 }
 
 export interface ModuleReview {
@@ -128,6 +129,9 @@ export async function buildMonthlyReviewData(
       id: true, title: true, status: true, priority: true, createdAt: true, targetDate: true, revisedTargetDate: true,
       sapModule: { select: { code: true } },
       sapSubModule: { select: { name: true } },
+      abapRequired: true,
+      abapTransport: true,
+      abapAgent: { select: { user: { select: { firstName: true, lastName: true } } } },
     },
   });
 
@@ -149,11 +153,21 @@ export async function buildMonthlyReviewData(
     return byRecord.get(r.id)?.find((c) => c.at > moment)?.from ?? r.status;
   };
 
-  const sectionOf = (r: (typeof records)[number]): string => {
+  // Every ticket belongs to its own module page. Tickets where an ABAPer is needed/assigned
+  // also appear on the ABAP page, whatever their functional module is.
+  const sectionsOf = (r: (typeof records)[number]): string[] => {
     const code = r.sapModule?.code?.toUpperCase();
     const sub = r.sapSubModule?.name || '';
     const hit = SECTIONS.find((s) => s.code === code && (!s.sub || s.sub.test(sub)));
-    return hit ? hit.id : OTHER_ID;
+    const ids = [hit ? hit.id : OTHER_ID];
+    if (r.abapRequired && !ids.includes('abap')) ids.push('abap');
+    return ids;
+  };
+  const abapComment = (r: (typeof records)[number]): string => {
+    const name = r.abapAgent
+      ? `${r.abapAgent.user.firstName} ${r.abapAgent.user.lastName}`.replace(/\s*-\s*$/, '').replace(/\s+/g, ' ').trim()
+      : '';
+    return [name ? `ABAPer: ${name}` : 'ABAPer not assigned yet', r.abapTransport ? `TR: ${r.abapTransport}` : ''].filter(Boolean).join(' · ');
   };
 
   const empty = (): ModuleSummary => ({ carry: 0, carryClosed: 0, carryHigh: 0, carryNormal: 0, newCount: 0, newClosed: 0, newHigh: 0, newNormal: 0 });
@@ -164,30 +178,33 @@ export async function buildMonthlyReviewData(
   };
 
   for (const r of records) {
-    const sec = slot(sectionOf(r));
     const high = HIGH_PRIORITIES.has(r.priority);
     const endStatus = statusAt(r, asOfEnd);
     if (!endStatus || !STATUS_TO_BUCKET[endStatus]) continue; // not created yet, or cancelled
+    const startStatus = r.createdAt < monthStart ? statusAt(r, prevEnd) : null;
 
-    if (r.createdAt < monthStart) {
-      // Carry forward: open when the month began
-      const startStatus = statusAt(r, prevEnd);
-      if (startStatus && isOpenType(startStatus)) {
-        sec.summary.carry++;
-        if (high) sec.summary.carryHigh++; else sec.summary.carryNormal++;
-        if (isClosed(endStatus)) sec.summary.carryClosed++;
+    for (const sid of sectionsOf(r)) {
+      const sec = slot(sid);
+      if (r.createdAt < monthStart) {
+        // Carry forward: open when the month began
+        if (startStatus && isOpenType(startStatus)) {
+          sec.summary.carry++;
+          if (high) sec.summary.carryHigh++; else sec.summary.carryNormal++;
+          if (isClosed(endStatus)) sec.summary.carryClosed++;
+        }
+      } else if (r.createdAt <= asOfEnd) {
+        sec.summary.newCount++;
+        if (high) sec.summary.newHigh++; else sec.summary.newNormal++;
+        if (isClosed(endStatus)) sec.summary.newClosed++;
       }
-    } else if (r.createdAt <= asOfEnd) {
-      sec.summary.newCount++;
-      if (high) sec.summary.newHigh++; else sec.summary.newNormal++;
-      if (isClosed(endStatus)) sec.summary.newClosed++;
-    }
 
-    if (high && isOpenType(endStatus)) {
-      sec.high.push({
-        title: r.title.replace(/\s+/g, ' ').trim(), createdAt: r.createdAt, targetDate: r.revisedTargetDate ?? r.targetDate,
-        statusLabel: statusLabel(endStatus), n: 0,
-      });
+      if (high && isOpenType(endStatus)) {
+        sec.high.push({
+          title: r.title.replace(/\s+/g, ' ').trim(), createdAt: r.createdAt, targetDate: r.revisedTargetDate ?? r.targetDate,
+          statusLabel: statusLabel(endStatus), n: 0,
+          comment: sid === 'abap' ? abapComment(r) : undefined,
+        });
+      }
     }
   }
 
@@ -330,7 +347,7 @@ function moduleSection(data: MonthlyReviewData, m: ModuleReview) {
     ? m.highOpen.map((t, i) => new TableRow({
         children: [
           cell(String(i + 1), c2[0], { align: mid }), cell(t.title, c2[1]), cell(dotDate(t.createdAt), c2[2], { align: mid }),
-          cell(dotDate(t.targetDate), c2[3], { align: mid }), cell('', c2[4]), cell(t.statusLabel, c2[5], { align: mid }),
+          cell(dotDate(t.targetDate), c2[3], { align: mid }), cell(t.comment || '', c2[4]), cell(t.statusLabel, c2[5], { align: mid }),
         ],
       }))
     : [new TableRow({
