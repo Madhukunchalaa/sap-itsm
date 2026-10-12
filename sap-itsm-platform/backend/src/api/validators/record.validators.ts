@@ -83,7 +83,7 @@ export const listRecordsSchema = z.object({
       ])
       .optional(),
     plant: z.string().optional(),
-    abap: z.enum(['needed', 'unassigned', 'assigned']).optional(),
+    abap: z.enum(['needed', 'unassigned', 'assigned', 'in_progress', 'completed']).optional(),
     abapAgentId: z.string().uuid().optional(),
     search: z.string().max(200).optional(),
     sortBy: z

@@ -57,7 +57,7 @@ export interface ListRecordsInput {
   targetDateTo?: string;
   userOrModulesFilter?: { createdById: string; customerId: string; sapModuleId: string };
   agentScopeId?: string;     // AGENT role: tickets they own OR are the assigned ABAPer on
-  abap?: 'needed' | 'unassigned' | 'assigned'; // ABAP hand-off filter
+  abap?: 'needed' | 'unassigned' | 'assigned' | 'in_progress' | 'completed'; // ABAP hand-off filter
   abapAgentId?: string;      // tickets assigned to this ABAPer
 }
 
@@ -350,6 +350,8 @@ export async function listRecords(input: ListRecordsInput) {
   if (input.abap === 'needed') andConditions.push({ abapRequired: true });
   if (input.abap === 'unassigned') andConditions.push({ abapRequired: true, abapAgentId: null });
   if (input.abap === 'assigned') andConditions.push({ abapAgentId: { not: null } });
+  if (input.abap === 'in_progress') andConditions.push({ abapAgentId: { not: null }, abapCompletedAt: null });
+  if (input.abap === 'completed') andConditions.push({ abapCompletedAt: { not: null } });
   if (input.abapAgentId) andConditions.push({ abapAgentId: input.abapAgentId });
 
   if (input.userOrModulesFilter) {

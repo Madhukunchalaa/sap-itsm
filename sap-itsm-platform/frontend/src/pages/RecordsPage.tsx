@@ -92,6 +92,7 @@ const EXPORT_LIMIT_OPTIONS = [
 
 // ── Column visibility (per-user, persisted in localStorage) ───
 const COLUMN_STORAGE_KEY = 'records-visible-columns-v1';
+const COLUMN_SEEN_KEY = 'records-known-columns-v1';
 // Record # and Title are always shown and not toggleable.
 const TOGGLEABLE_COLUMNS = [
   { key: 'type',              label: 'Type' },
@@ -104,7 +105,7 @@ const TOGGLEABLE_COLUMNS = [
   { key: 'targetDate',        label: 'Target Date' },
   { key: 'revisedTargetDate', label: 'Revised Target Date' },
   { key: 'assignedAgent',     label: 'Assigned' },
-  { key: 'abap',              label: 'ABAP' },
+  { key: 'abap',              label: 'ABAPer' },
   { key: 'createdAt',         label: 'Created' },
 ];
 // Shown by default; the two new date columns are opt-in.
@@ -112,10 +113,27 @@ const DEFAULT_VISIBLE_COLUMNS = TOGGLEABLE_COLUMNS
   .map(c => c.key)
   .filter(k => k !== 'targetDate' && k !== 'revisedTargetDate');
 
+// Columns that existed before the "known columns" list was kept. A saved column choice made before the
+// ABAPer column existed would otherwise hide it for good, so a column the user has never seen is switched on once.
+const LEGACY_COLUMNS = TOGGLEABLE_COLUMNS.map(c => c.key).filter(k => k !== 'abap');
+const rememberKnownColumns = () => {
+  try { localStorage.setItem(COLUMN_SEEN_KEY, JSON.stringify(TOGGLEABLE_COLUMNS.map(c => c.key))); } catch {}
+};
+
 function loadVisibleColumns(): string[] {
   try {
     const saved = localStorage.getItem(COLUMN_STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      let visible: string[] = JSON.parse(saved);
+      const seen: string[] = JSON.parse(localStorage.getItem(COLUMN_SEEN_KEY) || 'null') ?? LEGACY_COLUMNS;
+      const fresh = DEFAULT_VISIBLE_COLUMNS.filter(k => !seen.includes(k) && !visible.includes(k));
+      if (fresh.length) {
+        visible = [...visible, ...fresh];
+        localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(visible));
+      }
+      rememberKnownColumns();
+      return visible;
+    }
   } catch {}
   return DEFAULT_VISIBLE_COLUMNS;
 }
@@ -133,6 +151,7 @@ export default function RecordsPage() {
     setVisibleColKeys(prev => {
       const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
       try { localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(next)); } catch {}
+      rememberKnownColumns();
       return next;
     });
   };
@@ -149,6 +168,13 @@ export default function RecordsPage() {
     value: a.id,
     label: `${a.user.firstName} ${a.user.lastName}`,
   }));
+
+  // ABAPers (tech team) — a separate list from the functional agents above.
+  const { data: abapAgentList = [] } = useQuery({
+    queryKey: ['abap-agents'],
+    queryFn: () => recordsApi.abapAgents().then(r => (r.data.data || []) as { id: string; name: string }[]),
+    enabled: canFilterByAgent,
+  });
 
   const canFilterByCreator = !['USER', 'PLANT_MANAGER'].includes(user?.role || '');
   const { data: usersData } = useUsers(canFilterByCreator ? { limit: 500 } : undefined);
@@ -172,6 +198,7 @@ export default function RecordsPage() {
     selModule, setSelModule,
     selPlant, setSelPlant,
     selAbap: selAbapRaw, setSelAbap,
+    selAbapAgent: selAbapAgentRaw, setSelAbapAgent,
     selCustomer, setSelCustomer,
     selAgent, setSelAgent,
     selCreator, setSelCreator,
@@ -189,6 +216,7 @@ export default function RecordsPage() {
   });
 
   const selAbap = selAbapRaw || ''; // older saved filter state has no ABAP value
+  const selAbapAgent = selAbapAgentRaw || '';
   const canSeeAbap = ['SUPER_ADMIN', 'PROJECT_MANAGER', 'AGENT'].includes(user?.role || '');
 
   const [exportLimit, setExportLimit] = React.useState('current');
@@ -203,6 +231,7 @@ export default function RecordsPage() {
     sapModuleId:     selModule.length   ? (selModule as any)   : undefined,
     plant:           selPlant           || undefined,
     abap:            selAbap            || undefined,
+    abapAgentId:     selAbapAgent       || undefined,
     customerId:      selCustomer        || undefined,
     assignedAgentId: selAgent.length    ? (selAgent as any)   : undefined,
     createdById:     selCreator         || undefined,
@@ -216,6 +245,7 @@ export default function RecordsPage() {
     (selModule.length   > 0 ? 1 : 0) +
     (selPlant           ? 1 : 0) +
     (selAbap            ? 1 : 0) +
+    (selAbapAgent       ? 1 : 0) +
     (selCustomer        ? 1 : 0) +
     (selAgent.length    > 0 ? 1 : 0) +
     (selCreator         ? 1 : 0) +
@@ -282,6 +312,7 @@ export default function RecordsPage() {
           sapModuleId:     selModule.length   ? (selModule as any)   : undefined,
           plant:           selPlant           || undefined,
           abap:            selAbap            || undefined,
+          abapAgentId:     selAbapAgent       || undefined,
           customerId:      selCustomer        || undefined,
           assignedAgentId: selAgent.length    ? (selAgent as any)   : undefined,
           createdById:     selCreator         || undefined,
@@ -416,10 +447,13 @@ export default function RecordsPage() {
   };
   const abapColumn: Column<any> = {
     key: 'abap',
-    header: 'ABAP',
+    header: 'ABAPer',
     render: (row) => row.abapAgent ? (
-      <span className="text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1.5 py-0.5">
-        {row.abapAgent.user.firstName} {row.abapAgent.user.lastName}
+      <span
+        className="text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1.5 py-0.5"
+        title={row.abapCompletedAt ? 'ABAP development completed' : 'ABAP development in progress'}
+      >
+        {row.abapAgent.user.firstName} {row.abapAgent.user.lastName}{row.abapCompletedAt ? ' ✓' : ''}
       </span>
     ) : row.abapRequired ? (
       <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">ABAPer needed</span>
@@ -693,14 +727,14 @@ export default function RecordsPage() {
           {canFilterByAgent && (
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
-                Agent
+                Functional Agent
                 {selAgent.length > 0 && <span className="text-blue-600 font-semibold">{selAgent.length}</span>}
               </label>
               <MultiSelectDropdown
                 options={agentOptions}
                 selected={selAgent}
                 onChange={(v) => { setSelAgent(v); setFilters({ page: 1 }); }}
-                placeholder="All Agents"
+                placeholder="All Functional Agents"
               />
             </div>
           )}
@@ -759,7 +793,27 @@ export default function RecordsPage() {
                 <option value="">All Tickets</option>
                 <option value="needed">ABAPer needed (all)</option>
                 <option value="unassigned">Needed — not assigned yet</option>
-                <option value="assigned">ABAPer assigned</option>
+                <option value="assigned">ABAPer assigned (all)</option>
+                <option value="in_progress">ABAP in development</option>
+                <option value="completed">ABAP development completed</option>
+              </select>
+            </div>
+          )}
+
+          {/* ABAPer (tech team) — separate from the functional Agent filter; PM / admin only */}
+          {canFilterByAgent && (
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center justify-between">
+                ABAPer
+                {selAbapAgent && <span className="text-blue-600 font-semibold">1</span>}
+              </label>
+              <select
+                value={selAbapAgent}
+                onChange={(e) => { setSelAbapAgent(e.target.value); setFilters({ page: 1 }); }}
+                className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="">All ABAPers</option>
+                {abapAgentList.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
           )}

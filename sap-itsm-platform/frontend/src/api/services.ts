@@ -35,7 +35,7 @@ export interface RecordFilters {
   customerId?: string;
   sapModuleId?: string | string[];
   plant?: string;
-  abap?: string;        // 'needed' | 'unassigned' | 'assigned'
+  abap?: string;        // 'needed' | 'unassigned' | 'assigned' | 'in_progress' | 'completed'
   abapAgentId?: string;
   search?: string;
   sortBy?: string;
